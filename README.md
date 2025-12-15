@@ -589,22 +589,24 @@ flowchart TB
 ### Estrategia de Testing
 
 ```mermaid
-pyramid
-    accTitle: Pirámide de Testing
-    accDescr: Muestra la distribución de tipos de tests
-```
-
-```mermaid
 flowchart TB
-    subgraph "Pirámide de Testing"
-        E2E[🔺 E2E Tests<br/>10%]
-        INT[🔶 Integration Tests<br/>30%]
-        UNIT[🟩 Unit Tests<br/>60%]
+    subgraph "Piramide de Testing"
+        direction TB
+        E2E["E2E Tests - 10%"]
+        INT["Integration Tests - 30%"]
+        UNIT["Unit Tests - 60%"]
+        
+        E2E --- INT
+        INT --- UNIT
     end
 
     E2E --> |"Cypress/Playwright"| FULL[Flujos completos]
     INT --> |"Supertest + TestContainers"| API[APIs + BD]
     UNIT --> |"Jest/Vitest"| FUNC[Funciones aisladas]
+    
+    style E2E fill:#ff6b6b,color:#fff
+    style INT fill:#feca57,color:#000
+    style UNIT fill:#1dd1a1,color:#fff
 ```
 
 #### Tipos de Tests por Servicio
