@@ -127,29 +127,32 @@ services:
       - streamia-network
 
   # Movie Service (placeholder - uses same base as user service)
-  # movie-service:
-  #   build:
-  #     context: ..
-  #     dockerfile: services/movie-service/Dockerfile
-  #   container_name: streamia-movie-service
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3002:3002"
-  #   environment:
-  #     NODE_ENV: development
-  #     PORT: 3002
-  #     MONGODB_URI: mongodb://streamia:streamia_secret@mongodb:27017/streamia_movies?authSource=admin
-  #     REDIS_URL: redis://redis:6379
-  #     RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
-  #   depends_on:
-  #     mongodb:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     rabbitmq:
-  #       condition: service_healthy
-  #   networks:
-  #     - streamia-network
+  movie-service:
+    build:
+      context: ..
+      dockerfile: services/movie-service/Dockerfile
+    container_name: streamia-movie-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      CLOUDINARY_CLOUD_NAME: dwmt0zy4j
+      CLOUDINARY_API_KEY: 592275924138716  
+      CLOUDINARY_API_SECRET: ZMeWN20kVls0xa6ulVGZW9D551Q 
+      PORT: 3002
+      MONGODB_URI: mongodb+srv://emanuel_rivas:emanuel123@streamia.ggiikay.mongodb.net/Streamia?retryWrites=true&w=majority&appName=Streamia
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
 
   # Favorites Service (placeholder)
   # favorites-service:

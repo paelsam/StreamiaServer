@@ -81,7 +81,10 @@ export function createProxyRoutes(): Router {
   router.use(
     '/movies',
     circuitBreakerMiddleware('movie-service'),
-    createProxyMiddleware(createProxyOptions(config.services.movie, 'movies'))
+    createProxyMiddleware({...createProxyOptions(config.services.movie, 'movies'),
+      pathRewrite: { '^': '/api/v1/movies' }
+    }),
+    
   );
 
   // Favorites Service
