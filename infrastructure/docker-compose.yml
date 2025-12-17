@@ -179,17 +179,18 @@ services:
       NODE_ENV: development
       PORT: 3006
       RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
-      # Variables adicionales segun servicio
+      # SMTP Configuration (configurar en .env)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - streamia-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 # ===========================================
 # Networks

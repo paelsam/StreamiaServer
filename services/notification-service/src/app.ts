@@ -28,9 +28,9 @@ export function setHealthy(healthy: boolean): void {
 export function startHealthServer(): Promise<void> {
   return new Promise((resolve) => {
     const app = createApp();
-    const port = parseInt(config.port || '3006', 10);
+    const port = config.port || 3006;
 
-    app.listen(port, '0.0.0.0', () => {
+    app.listen(port, () => {
       console.log(`[Health Check] Server listening on port ${port}`);
       resolve();
     });
