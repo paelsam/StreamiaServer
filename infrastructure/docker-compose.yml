@@ -2,7 +2,7 @@ services:
   # ===========================================
   # Infrastructure Services
   # ===========================================
-  
+
   # MongoDB - Primary database
   mongodb:
     image: mongo:7
@@ -48,7 +48,7 @@ services:
     container_name: streamia-rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"   # AMQP port
+      - "5672:5672" # AMQP port
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: streamia
@@ -67,7 +67,7 @@ services:
   # ===========================================
   # API Gateway
   # ===========================================
-  
+
   api-gateway:
     build:
       context: ../gateway/express-gateway
@@ -166,6 +166,31 @@ services:
   # Notification Service (placeholder)
   # notification-service:
   #   ...
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    container_name: streamia-notification-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+      # SMTP Configuration (configurar en .env)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
 
 # ===========================================
 # Networks

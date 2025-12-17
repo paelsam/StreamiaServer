@@ -33,3 +33,13 @@ services:
       - ../shared/src:/app/shared/src:ro
     environment:
       NODE_ENV: development
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    volumes:
+      - ../services/notification-service/src:/app/src:ro
+      - ../shared/src:/app/shared/src:ro
+    environment:
+      NODE_ENV: development
