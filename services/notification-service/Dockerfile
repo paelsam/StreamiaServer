@@ -40,9 +40,9 @@ COPY --from=builder /app/shared/dist ./shared/dist
 COPY --from=builder /app/shared/package*.json ./shared/
 
 # Copy built service and pruned node_modules
-COPY --from=builder /app/services/user-service/dist ./dist
-COPY --from=builder /app/services/user-service/package*.json ./
-COPY --from=builder /app/services/user-service/node_modules ./node_modules
+COPY --from=builder /app/services/notification-service/dist ./dist
+COPY --from=builder /app/services/notification-service/package*.json ./
+COPY --from=builder /app/services/notification-service/node_modules ./node_modules
 
 # Fix the @streamia/shared - copy the actual files instead of symlink
 RUN rm -rf node_modules/@streamia/shared && \

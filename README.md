@@ -1,708 +1,941 @@
-# Guia de Implementacion de Microservicios - Streamia
+# 🎬 Streamia: Arquitectura de Microservicios
 
-Este documento detalla los pasos necesarios para implementar los microservicios faltantes en la arquitectura de Streamia.
+## 📋 Índice
 
-## Indice
-
-1. [Estado Actual del Proyecto](#estado-actual-del-proyecto)
-2. [Arquitectura General](#arquitectura-general)
-3. [Estructura Base de un Microservicio](#estructura-base-de-un-microservicio)
-4. [Movie Service](#movie-service)
-5. [Favorites Service](#favorites-service)
-6. [Rating Service](#rating-service)
-7. [Comment Service](#comment-service)
-8. [Notification Service](#notification-service)
-9. [Configuracion de Docker Compose](#configuracion-de-docker-compose)
-10. [Eventos y Comunicacion](#eventos-y-comunicacion)
+1. [Introducción](#introducción)
+2. [Visión General de la Arquitectura](#visión-general-de-la-arquitectura)
+3. [Patrones de Diseño](#patrones-de-diseño)
+4. [Microservicios del Sistema](#microservicios-del-sistema)
+5. [Comunicación entre Servicios](#comunicación-entre-servicios)
+6. [Infraestructura y Herramientas](#infraestructura-y-herramientas)
+7. [Testing y Monitoreo](#testing-y-monitoreo)
+8. [Despliegue con Kubernetes](#despliegue-con-kubernetes)
 
 ---
 
-## Estado Actual del Proyecto
+## Introducción
 
-### Servicios Implementados
+Este documento describe la arquitectura de microservicios para **Streamia**, una plataforma de streaming de películas. El diseño toma como base el monolito existente y lo descompone en servicios independientes, escalables y mantenibles.
 
-| Servicio | Puerto | Estado |
-|----------|--------|--------|
-| User Service | 3001 | Implementado |
-| API Gateway | 3000 | Implementado |
+### Monolito Original vs Microservicios
 
-### Servicios Pendientes
+```mermaid
+graph LR
+    subgraph "🔴 Monolito Actual"
+        M[Streamia Server]
+        M --> Users
+        M --> Movies
+        M --> Favorites
+        M --> Ratings
+        M --> Comments
+    end
+```
 
-| Servicio | Puerto | Estado |
-|----------|--------|--------|
-| Movie Service | 3002 | Pendiente |
-| Favorites Service | 3003 | Pendiente |
-| Rating Service | 3004 | Pendiente |
-| Comment Service | 3005 | Pendiente |
-| Notification Service | 3006 | Pendiente |
+```mermaid
+graph TB
+    subgraph "🟢 Arquitectura Microservicios"
+        GW[API Gateway]
+        GW --> US[User Service]
+        GW --> MS[Movie Service]
+        GW --> FS[Favorites Service]
+        GW --> RS[Rating Service]
+        GW --> CS[Comment Service]
+        GW --> NS[Notification Service]
+    end
+```
 
 ---
 
-## Arquitectura General
+## Visión General de la Arquitectura
+
+### Diagrama de Arquitectura Completa
 
 ```mermaid
 flowchart TB
-    subgraph Cliente
-        WEB[Web App]
-        MOB[Mobile App]
+    subgraph "Cliente"
+        WEB[🌐 Web App]
+        MOB[📱 Mobile App]
     end
 
-    subgraph Gateway
-        GW[API Gateway :3000]
+    subgraph "API Gateway Layer"
+        EG[🚪 Express Gateway]
     end
 
-    subgraph Microservicios
-        US[User Service :3001]
-        MS[Movie Service :3002]
-        FS[Favorites Service :3003]
-        RS[Rating Service :3004]
-        CS[Comment Service :3005]
-        NS[Notification Service :3006]
+    subgraph "Microservices"
+        US[👤 User Service<br/>Puerto: 3001]
+        MS[🎬 Movie Service<br/>Puerto: 3002]
+        FS[⭐ Favorites Service<br/>Puerto: 3003]
+        RS[📊 Rating Service<br/>Puerto: 3004]
+        CS[💬 Comment Service<br/>Puerto: 3005]
+        NS[📧 Notification Service<br/>Puerto: 3006]
     end
 
-    subgraph Mensajeria
-        RMQ[RabbitMQ]
+    subgraph "Message Broker"
+        RMQ[🐰 RabbitMQ]
     end
 
-    subgraph Datos
-        MONGO[(MongoDB)]
-        REDIS[(Redis)]
+    subgraph "Data Layer"
+        UMDB[(MongoDB<br/>Users)]
+        MMDB[(MongoDB<br/>Movies)]
+        FMDB[(MongoDB<br/>Favorites)]
+        RMDB[(MongoDB<br/>Ratings)]
+        CMDB[(MongoDB<br/>Comments)]
+        REDIS[(Redis<br/>Cache)]
     end
 
-    WEB --> GW
-    MOB --> GW
-    GW --> US & MS & FS & RS & CS
-    US & MS & FS & RS & CS & NS <--> RMQ
-    US & MS & FS & RS & CS --> MONGO
-    US & MS --> REDIS
+    subgraph "External Services"
+        CLD[☁️ Cloudinary]
+        SMTP[📬 SMTP Server]
+    end
+
+    WEB --> EG
+    MOB --> EG
+    
+    EG --> US
+    EG --> MS
+    EG --> FS
+    EG --> RS
+    EG --> CS
+
+    US --> UMDB
+    MS --> MMDB
+    FS --> FMDB
+    RS --> RMDB
+    CS --> CMDB
+
+    US <--> RMQ
+    MS <--> RMQ
+    FS <--> RMQ
+    RS <--> RMQ
+    CS <--> RMQ
+    NS <--> RMQ
+
+    MS --> CLD
+    NS --> SMTP
+
+    US --> REDIS
+    MS --> REDIS
 ```
 
 ---
 
-## Estructura Base de un Microservicio
+## Patrones de Diseño
 
-Cada microservicio sigue la misma estructura del User Service como referencia:
+### 1. 🔄 Saga Pattern (Requerido)
+
+El patrón Saga maneja transacciones distribuidas que involucran múltiples microservicios, garantizando la consistencia eventual del sistema.
+
+#### Justificación
+- Las operaciones en Streamia involucran múltiples servicios (ej: eliminar usuario debe eliminar sus favoritos, ratings y comentarios)
+- No podemos usar transacciones ACID tradicionales entre bases de datos separadas
+- Necesitamos un mecanismo de compensación ante fallos
+
+#### Saga: Eliminación de Usuario
+
+```mermaid
+sequenceDiagram
+    participant US as User Service
+    participant RMQ as RabbitMQ
+    participant FS as Favorites Service
+    participant RS as Rating Service
+    participant CS as Comment Service
+    participant NS as Notification Service
+
+    US->>RMQ: user.deleted {userId}
+    
+    par Ejecución Paralela
+        RMQ->>FS: Eliminar favoritos
+        FS-->>RMQ: favorites.deleted ✓
+    and
+        RMQ->>RS: Eliminar ratings
+        RS-->>RMQ: ratings.deleted ✓
+    and
+        RMQ->>CS: Eliminar comentarios
+        CS-->>RMQ: comments.deleted ✓
+    end
+
+    RMQ->>NS: Enviar email confirmación
+    NS-->>RMQ: notification.sent ✓
+
+    Note over US,NS: Si algún paso falla, se ejecutan compensaciones
+```
+
+#### Saga: Eliminación de Película
+
+```mermaid
+sequenceDiagram
+    participant MS as Movie Service
+    participant RMQ as RabbitMQ
+    participant FS as Favorites Service
+    participant RS as Rating Service
+    participant CS as Comment Service
+    participant CLD as Cloudinary
+
+    MS->>CLD: Eliminar video/assets
+    CLD-->>MS: Assets eliminados ✓
+    
+    MS->>RMQ: movie.deleted {movieId}
+    
+    par Limpieza de datos relacionados
+        RMQ->>FS: Eliminar de favoritos
+        FS-->>RMQ: ✓
+    and
+        RMQ->>RS: Eliminar ratings
+        RS-->>RMQ: ✓
+    and
+        RMQ->>CS: Eliminar comentarios
+        CS-->>RMQ: ✓
+    end
+
+    Note over MS,CS: Compensación: restaurar película si falla
+```
+
+### 2. 🚪 API Gateway Pattern
+
+Express Gateway actúa como punto de entrada único para todos los clientes.
+
+#### Justificación
+- Centraliza autenticación y autorización
+- Simplifica la experiencia del cliente (una sola URL)
+- Permite rate limiting, logging y transformación de requests
+- Facilita el versionado de APIs
+
+```mermaid
+flowchart LR
+    subgraph "Clientes"
+        C1[Web]
+        C2[Mobile]
+        C3[Third Party]
+    end
+
+    subgraph "Express Gateway"
+        AUTH[🔐 Auth Plugin]
+        RL[⏱️ Rate Limiter]
+        LOG[📝 Logger]
+        PROXY[🔀 Proxy]
+    end
+
+    subgraph "Servicios"
+        S1[User Service]
+        S2[Movie Service]
+        S3[Otros...]
+    end
+
+    C1 --> AUTH
+    C2 --> AUTH
+    C3 --> AUTH
+    AUTH --> RL
+    RL --> LOG
+    LOG --> PROXY
+    PROXY --> S1
+    PROXY --> S2
+    PROXY --> S3
+```
+
+### 3. ⚡ Circuit Breaker Pattern
+
+Previene fallos en cascada cuando un servicio no responde.
+
+#### Justificación
+- Evita que un servicio caído afecte a todo el sistema
+- Permite recuperación gradual
+- Mejora la experiencia del usuario con respuestas rápidas de error
+
+```mermaid
+stateDiagram-v2
+    [*] --> Closed: Inicio
+    Closed --> Open: Umbral de fallos alcanzado
+    Open --> HalfOpen: Tiempo de espera cumplido
+    HalfOpen --> Closed: Request exitoso
+    HalfOpen --> Open: Request fallido
+
+    note right of Closed: Requests pasan normalmente
+    note right of Open: Requests rechazados inmediatamente
+    note right of HalfOpen: Se permite un request de prueba
+```
+
+### 4. 📊 Database per Service Pattern
+
+Cada microservicio tiene su propia base de datos.
+
+#### Justificación
+- Independencia total entre servicios
+- Cada servicio puede elegir el tipo de BD más adecuado
+- Facilita el escalado independiente
+- Evita acoplamiento a nivel de datos
 
 ```mermaid
 flowchart TB
-    subgraph Estructura del Servicio
-        INDEX[index.ts] --> APP[app.ts]
-        APP --> ROUTES[routes/]
-        APP --> MIDDLEWARES[middlewares/]
-        ROUTES --> CONTROLLERS[controllers/]
-        CONTROLLERS --> SERVICES[services/]
-        SERVICES --> MODELS[models/]
-        SERVICES --> EVENTBUS[EventBus]
+    subgraph "❌ Anti-patrón: BD Compartida"
+        S1[Service 1] --> DB[(MongoDB)]
+        S2[Service 2] --> DB
+        S3[Service 3] --> DB
     end
 ```
-
-### Archivos Base Requeridos
-
-```
-services/{service-name}/
-├── Dockerfile
-├── package.json
-├── tsconfig.json
-└── src/
-    ├── index.ts           # Punto de entrada, bootstrap
-    ├── app.ts             # Configuracion de Express
-    ├── config/
-    │   ├── index.ts       # Variables de entorno
-    │   ├── database.ts    # Conexion MongoDB
-    │   └── redis.ts       # Conexion Redis (opcional)
-    ├── controllers/
-    │   └── {name}Controller.ts
-    ├── services/
-    │   └── {name}Service.ts
-    ├── models/
-    │   └── {Model}.ts
-    ├── routes/
-    │   └── {name}Routes.ts
-    ├── validators/
-    │   └── {name}Validators.ts
-    └── middlewares/
-        └── index.ts
-```
-
----
-
-## Movie Service
-
-### Descripcion
-
-Gestiona el catalogo de peliculas, incluyendo operaciones CRUD, subida de videos a Cloudinary y cache con Redis.
-
-### Diagrama de Flujo
-
-```mermaid
-flowchart LR
-    subgraph Movie Service
-        API[REST API]
-        SVC[MovieService]
-        MODEL[Movie Model]
-        CACHE[Redis Cache]
-        CLD[Cloudinary]
-    end
-
-    API --> SVC
-    SVC --> MODEL
-    SVC --> CACHE
-    SVC --> CLD
-    SVC --> |Publica| RMQ[RabbitMQ]
-```
-
-### Archivos a Crear
-
-#### 1. services/movie-service/package.json
-
-Puntos clave:
-- Nombre: `@streamia/movie-service`
-- Dependencias adicionales: `cloudinary`, `multer` para upload de archivos
-- Scripts identicos al user-service
-- Puerto: 3002
-
-#### 2. services/movie-service/src/config/index.ts
-
-Variables de entorno requeridas:
-- `PORT`: 3002
-- `MONGODB_URI`: URI con base de datos `streamia_movies`
-- `REDIS_URL`: Para cache de peliculas
-- `RABBITMQ_URL`: Comunicacion con otros servicios
-- `CLOUDINARY_CLOUD_NAME`: Nombre del cloud
-- `CLOUDINARY_API_KEY`: API key de Cloudinary
-- `CLOUDINARY_API_SECRET`: Secret de Cloudinary
-
-#### 3. services/movie-service/src/models/Movie.ts
-
-Campos del modelo:
-- `title`: String, requerido, indexado
-- `description`: String, requerido
-- `genre`: Array de strings
-- `releaseYear`: Number
-- `duration`: Number (minutos)
-- `director`: String
-- `cast`: Array de strings
-- `posterUrl`: String (URL de Cloudinary)
-- `videoUrl`: String (URL de Cloudinary)
-- `subtitles`: Array de objetos {language, url}
-- `averageRating`: Number, default 0
-- `totalRatings`: Number, default 0
-- `createdAt`, `updatedAt`: Timestamps
-
-#### 4. services/movie-service/src/services/movieService.ts
-
-Metodos principales:
-- `createMovie(data)`: Crea pelicula, publica `MOVIE_CREATED`
-- `updateMovie(id, data)`: Actualiza, publica `MOVIE_UPDATED`
-- `deleteMovie(id)`: Elimina de Cloudinary y BD, publica `MOVIE_DELETED`
-- `getMovies(filters, pagination)`: Lista con filtros y cache
-- `getMovieById(id)`: Obtiene con cache
-- `uploadVideo(movieId, file)`: Sube a Cloudinary
-- `addSubtitles(movieId, language, file)`: Agrega subtitulos
-
-Debe suscribirse a:
-- `RATING_CREATED`, `RATING_UPDATED`, `RATING_DELETED`: Para recalcular `averageRating`
-
-#### 5. services/movie-service/src/controllers/movieController.ts
-
-Endpoints:
-- `GET /movies` - Lista peliculas con paginacion
-- `GET /movies/:id` - Obtiene pelicula por ID
-- `POST /movies` - Crea pelicula (requiere auth admin)
-- `PUT /movies/:id` - Actualiza pelicula
-- `DELETE /movies/:id` - Elimina pelicula
-- `POST /movies/:id/upload` - Sube video
-- `POST /movies/:id/subtitles` - Agrega subtitulos
-
-#### 6. services/movie-service/src/validators/movieValidators.ts
-
-Esquemas Zod para:
-- `createMovieSchema`: Validacion de creacion
-- `updateMovieSchema`: Validacion de actualizacion
-- `movieFiltersSchema`: Validacion de filtros de busqueda
-
-### Eventos Publicados
-
-| Evento | Payload | Consumidores |
-|--------|---------|--------------|
-| `movie.created` | {movieId, title} | - |
-| `movie.updated` | {movieId, changes} | - |
-| `movie.deleted` | {movieId} | Favorites, Rating, Comment |
-| `movie.video_uploaded` | {movieId, videoUrl} | - |
-
----
-
-## Favorites Service
-
-### Descripcion
-
-Gestiona la lista de peliculas favoritas de cada usuario.
-
-### Diagrama de Flujo
-
-```mermaid
-flowchart LR
-    subgraph Favorites Service
-        API[REST API]
-        SVC[FavoritesService]
-        MODEL[Favorite Model]
-    end
-
-    API --> SVC
-    SVC --> MODEL
-    SVC --> |Publica| RMQ[RabbitMQ]
-    RMQ --> |Escucha| SVC
-```
-
-### Archivos a Crear
-
-#### 1. services/favorites-service/src/models/Favorite.ts
-
-Campos del modelo:
-- `userId`: ObjectId, requerido, indexado
-- `movieId`: ObjectId, requerido, indexado
-- `note`: String, opcional (nota personal del usuario)
-- `createdAt`: Timestamp
-
-Indice compuesto unico en `{userId, movieId}` para evitar duplicados.
-
-#### 2. services/favorites-service/src/services/favoritesService.ts
-
-Metodos principales:
-- `addFavorite(userId, movieId, note?)`: Agrega favorito, publica `FAVORITE_ADDED`
-- `removeFavorite(userId, movieId)`: Elimina, publica `FAVORITE_REMOVED`
-- `getUserFavorites(userId, pagination)`: Lista favoritos del usuario
-- `isFavorite(userId, movieId)`: Verifica si es favorito
-- `clearUserFavorites(userId)`: Elimina todos (interno)
-- `clearMovieFavorites(movieId)`: Elimina todos de una pelicula (interno)
-
-Debe suscribirse a:
-- `USER_DELETED`: Ejecutar `clearUserFavorites`
-- `MOVIE_DELETED`: Ejecutar `clearMovieFavorites`
-
-#### 3. services/favorites-service/src/controllers/favoritesController.ts
-
-Endpoints:
-- `GET /favorites` - Lista favoritos del usuario autenticado
-- `POST /favorites/:movieId` - Agrega a favoritos
-- `DELETE /favorites/:movieId` - Elimina de favoritos
-- `GET /favorites/:movieId/check` - Verifica si es favorito
-
-### Eventos
-
-```mermaid
-flowchart LR
-    subgraph Publicados
-        FA[favorite.added]
-        FR[favorite.removed]
-        FCU[favorites.cleared_for_user]
-        FCM[favorites.cleared_for_movie]
-    end
-
-    subgraph Consumidos
-        UD[user.deleted]
-        MD[movie.deleted]
-    end
-
-    UD --> |Trigger| FCU
-    MD --> |Trigger| FCM
-```
-
----
-
-## Rating Service
-
-### Descripcion
-
-Gestiona las calificaciones de peliculas por usuarios.
-
-### Diagrama de Flujo
-
-```mermaid
-flowchart LR
-    subgraph Rating Service
-        API[REST API]
-        SVC[RatingService]
-        MODEL[Rating Model]
-    end
-
-    API --> SVC
-    SVC --> MODEL
-    SVC --> |Publica| RMQ[RabbitMQ]
-    RMQ --> |Escucha| SVC
-```
-
-### Archivos a Crear
-
-#### 1. services/rating-service/src/models/Rating.ts
-
-Campos del modelo:
-- `userId`: ObjectId, requerido, indexado
-- `movieId`: ObjectId, requerido, indexado
-- `score`: Number, requerido (1-5 o 1-10)
-- `createdAt`, `updatedAt`: Timestamps
-
-Indice compuesto unico en `{userId, movieId}`.
-
-#### 2. services/rating-service/src/services/ratingService.ts
-
-Metodos principales:
-- `createOrUpdateRating(userId, movieId, score)`: Crea/actualiza, publica evento
-- `deleteRating(userId, movieId)`: Elimina rating, publica `RATING_DELETED`
-- `getUserRating(userId, movieId)`: Obtiene rating del usuario para una pelicula
-- `getMovieRatings(movieId)`: Obtiene estadisticas de ratings
-- `getUserRatings(userId, pagination)`: Historial de ratings del usuario
-- `calculateMovieAverage(movieId)`: Calcula promedio (emite evento para Movie Service)
-
-Debe suscribirse a:
-- `USER_DELETED`: Eliminar ratings del usuario
-- `MOVIE_DELETED`: Eliminar ratings de la pelicula
-
-#### 3. services/rating-service/src/controllers/ratingController.ts
-
-Endpoints:
-- `POST /ratings/:movieId` - Califica pelicula
-- `GET /ratings/:movieId` - Obtiene rating del usuario
-- `DELETE /ratings/:movieId` - Elimina rating
-- `GET /ratings/movie/:movieId/stats` - Estadisticas de la pelicula
-- `GET /ratings/user/history` - Historial del usuario
-
-### Eventos
-
-| Evento | Payload | Consumidores |
-|--------|---------|--------------|
-| `rating.created` | {userId, movieId, score} | Movie Service |
-| `rating.updated` | {userId, movieId, score, previousScore} | Movie Service |
-| `rating.deleted` | {userId, movieId, score} | Movie Service |
-
----
-
-## Comment Service
-
-### Descripcion
-
-Gestiona los comentarios en peliculas con soporte para moderacion.
-
-### Diagrama de Flujo
-
-```mermaid
-flowchart LR
-    subgraph Comment Service
-        API[REST API]
-        SVC[CommentService]
-        MODEL[Comment Model]
-    end
-
-    API --> SVC
-    SVC --> MODEL
-    SVC --> |Publica| RMQ[RabbitMQ]
-    RMQ --> |Escucha| SVC
-```
-
-### Archivos a Crear
-
-#### 1. services/comment-service/src/models/Comment.ts
-
-Campos del modelo:
-- `userId`: ObjectId, requerido, indexado
-- `movieId`: ObjectId, requerido, indexado
-- `content`: String, requerido (max 1000 caracteres)
-- `parentId`: ObjectId, opcional (para respuestas)
-- `isEdited`: Boolean, default false
-- `isDeleted`: Boolean, default false (soft delete)
-- `moderationStatus`: Enum ['pending', 'approved', 'rejected']
-- `createdAt`, `updatedAt`: Timestamps
-
-#### 2. services/comment-service/src/services/commentService.ts
-
-Metodos principales:
-- `createComment(userId, movieId, content, parentId?)`: Crea comentario
-- `updateComment(userId, commentId, content)`: Edita (solo propietario)
-- `deleteComment(userId, commentId)`: Soft delete
-- `getMovieComments(movieId, pagination)`: Lista con paginacion
-- `getCommentReplies(commentId, pagination)`: Obtiene respuestas
-- `moderateComment(commentId, status)`: Modera (admin)
-
-Debe suscribirse a:
-- `USER_DELETED`: Marcar comentarios como eliminados o anonimizar
-- `MOVIE_DELETED`: Eliminar comentarios de la pelicula
-
-#### 3. services/comment-service/src/controllers/commentController.ts
-
-Endpoints:
-- `GET /comments/movie/:movieId` - Lista comentarios de pelicula
-- `POST /comments/movie/:movieId` - Crea comentario
-- `PUT /comments/:commentId` - Edita comentario
-- `DELETE /comments/:commentId` - Elimina comentario
-- `GET /comments/:commentId/replies` - Obtiene respuestas
-- `PATCH /comments/:commentId/moderate` - Modera (admin)
-
-### Estructura de Comentarios Anidados
 
 ```mermaid
 flowchart TB
-    C1[Comentario Principal]
-    C1 --> R1[Respuesta 1]
-    C1 --> R2[Respuesta 2]
-    R1 --> R1A[Respuesta a R1]
+    subgraph "✅ Patrón Correcto: BD por Servicio"
+        US[User Service] --> UDB[(Users DB)]
+        MS[Movie Service] --> MDB[(Movies DB)]
+        FS[Favorites Service] --> FDB[(Favorites DB)]
+    end
 ```
 
 ---
 
-## Notification Service
+## Microservicios del Sistema
 
-### Descripcion
+### Diagrama de Responsabilidades
 
-Servicio dedicado al envio de notificaciones por email. Es un consumidor puro de eventos, no expone API REST publica.
+```mermaid
+mindmap
+  root((Streamia<br/>Microservices))
+    User Service
+      Registro
+      Login/Logout
+      Perfil
+      Reset Password
+      JWT Tokens
+    Movie Service
+      CRUD Películas
+      Upload Video
+      Subtítulos
+      Cloudinary
+      Caché
+    Favorites Service
+      Agregar/Quitar
+      Listar favoritos
+      Notas personales
+    Rating Service
+      Calificar película
+      Promedio ratings
+      Historial usuario
+    Comment Service
+      CRUD Comentarios
+      Moderación
+      Paginación
+    Notification Service
+      Emails
+      Welcome
+      Password Reset
+      Alertas
+```
 
-### Diagrama de Flujo
+### Tabla de Microservicios
+
+| Servicio | Puerto | Base de Datos | Responsabilidad Principal |
+|----------|--------|---------------|---------------------------|
+| **User Service** | 3001 | MongoDB (users) | Autenticación, gestión de usuarios, JWT |
+| **Movie Service** | 3002 | MongoDB (movies) | Catálogo de películas, Cloudinary |
+| **Favorites Service** | 3003 | MongoDB (favorites) | Lista de favoritos por usuario |
+| **Rating Service** | 3004 | MongoDB (ratings) | Sistema de calificaciones |
+| **Comment Service** | 3005 | MongoDB (comments) | Comentarios en películas |
+| **Notification Service** | 3006 | - | Envío de emails y notificaciones |
+
+### Detalle de Cada Servicio
+
+#### 👤 User Service
+
+```mermaid
+flowchart TB
+    subgraph "User Service"
+        direction TB
+        API[REST API]
+        AUTH[Auth Module]
+        PROFILE[Profile Module]
+        
+        API --> AUTH
+        API --> PROFILE
+    end
+
+    subgraph "Endpoints"
+        E1[POST /register]
+        E2[POST /login]
+        E3[GET /profile]
+        E4[PUT /profile]
+        E5[POST /forgot-password]
+        E6[POST /reset-password]
+    end
+
+    subgraph "Eventos RabbitMQ"
+        EV1[user.registered]
+        EV2[user.deleted]
+        EV3[user.updated]
+    end
+
+    API --> E1 & E2 & E3 & E4 & E5 & E6
+    AUTH --> EV1 & EV2
+    PROFILE --> EV3
+```
+
+#### 🎬 Movie Service
+
+```mermaid
+flowchart TB
+    subgraph "Movie Service"
+        direction TB
+        API[REST API]
+        UPLOAD[Upload Module]
+        CATALOG[Catalog Module]
+        SUBS[Subtitles Module]
+        CACHE[Cache Layer]
+    end
+
+    subgraph "Endpoints"
+        E1[GET /movies]
+        E2[GET /movies/:id]
+        E3[POST /movies]
+        E4[PUT /movies/:id]
+        E5[DELETE /movies/:id]
+        E6[POST /movies/:id/subtitles]
+    end
+
+    subgraph "Integraciones"
+        CLD[☁️ Cloudinary]
+        REDIS[(Redis Cache)]
+    end
+
+    API --> E1 & E2 & E3 & E4 & E5 & E6
+    UPLOAD --> CLD
+    CATALOG --> CACHE
+    CACHE --> REDIS
+```
+
+---
+
+## Comunicación entre Servicios
+
+### Choreography vs Orchestration
+
+Este sistema utiliza **Choreography** (Coreografía) para la comunicación entre servicios.
+
+#### ¿Por qué Choreography?
+
+```mermaid
+flowchart TB
+    subgraph "❌ Orchestration"
+        O[Orquestador Central]
+        O --> S1[Service 1]
+        O --> S2[Service 2]
+        O --> S3[Service 3]
+        
+        style O fill:#ff6b6b
+    end
+```
+
+```mermaid
+flowchart TB
+    subgraph "✅ Choreography"
+        S1[Service 1] --> MB[Message Broker]
+        MB --> S2[Service 2]
+        MB --> S3[Service 3]
+        S2 --> MB
+        S3 --> MB
+        
+        style MB fill:#51cf66
+    end
+```
+
+#### Justificación de Choreography
+
+| Aspecto | Ventaja |
+|---------|---------|
+| **Desacoplamiento** | Los servicios no conocen a los demás, solo publican/consumen eventos |
+| **Escalabilidad** | No hay punto central de fallo o cuello de botella |
+| **Autonomía** | Cada servicio decide cómo reaccionar a los eventos |
+| **Flexibilidad** | Fácil agregar nuevos consumidores sin modificar productores |
+| **Resiliencia** | Si un servicio cae, los mensajes esperan en la cola |
+
+#### Trade-offs
+
+| Desventaja | Mitigación |
+|------------|------------|
+| Difícil rastrear flujos | Distributed tracing con Jaeger |
+| Debugging complejo | Logging centralizado con ELK |
+| Consistencia eventual | Diseño idempotente de handlers |
+
+### Flujo de Eventos con RabbitMQ
 
 ```mermaid
 flowchart LR
-    subgraph Otros Servicios
+    subgraph "Productores"
         US[User Service]
         MS[Movie Service]
     end
 
-    subgraph RabbitMQ
-        Q[notifications.queue]
+    subgraph "RabbitMQ"
+        EX1[user.events<br/>Exchange]
+        EX2[movie.events<br/>Exchange]
+        
+        Q1[favorites.user.queue]
+        Q2[ratings.user.queue]
+        Q3[comments.user.queue]
+        Q4[notifications.queue]
+        Q5[favorites.movie.queue]
+        Q6[ratings.movie.queue]
+        Q7[comments.movie.queue]
     end
 
-    subgraph Notification Service
-        CONSUMER[Event Consumer]
-        EMAIL[Email Service]
-        TEMPLATES[Templates]
+    subgraph "Consumidores"
+        FS[Favorites Service]
+        RS[Rating Service]
+        CS[Comment Service]
+        NS[Notification Service]
     end
 
-    subgraph External
-        SMTP[SMTP Server]
-    end
-
-    US --> |notification.send_email| Q
-    MS --> |notification.send_email| Q
-    Q --> CONSUMER
-    CONSUMER --> EMAIL
-    EMAIL --> TEMPLATES
-    EMAIL --> SMTP
+    US --> EX1
+    MS --> EX2
+    
+    EX1 --> Q1 & Q2 & Q3 & Q4
+    EX2 --> Q5 & Q6 & Q7
+    
+    Q1 --> FS
+    Q2 --> RS
+    Q3 --> CS
+    Q4 --> NS
+    Q5 --> FS
+    Q6 --> RS
+    Q7 --> CS
 ```
 
-### Archivos a Crear
-
-#### 1. services/notification-service/src/config/index.ts
-
-Variables de entorno:
-- `RABBITMQ_URL`: Para consumir eventos
-- `SMTP_HOST`: Host del servidor SMTP
-- `SMTP_PORT`: Puerto SMTP
-- `SMTP_USER`: Usuario SMTP
-- `SMTP_PASS`: Password SMTP
-- `EMAIL_FROM`: Direccion de origen
-
-#### 2. services/notification-service/src/services/emailService.ts
-
-Metodos principales:
-- `sendEmail(to, subject, template, data)`: Envia email usando plantilla
-- `sendWelcomeEmail(to, username)`: Email de bienvenida
-- `sendPasswordResetEmail(to, resetToken)`: Email de reset
-- `sendNotification(to, subject, message)`: Notificacion generica
-
-#### 3. services/notification-service/src/templates/
-
-Archivos de plantillas HTML:
-- `welcome.html`: Template de bienvenida
-- `password-reset.html`: Template de reset de password
-- `notification.html`: Template generico
-
-#### 4. services/notification-service/src/consumers/notificationConsumer.ts
-
-Consumidor de eventos:
-- Suscribirse a `NOTIFICATION_SEND_EMAIL`
-- Procesar payload y enviar email correspondiente
-- Publicar `NOTIFICATION_SENT` o `NOTIFICATION_FAILED`
-
-### Diferencias con Otros Servicios
-
-Este servicio NO tiene:
-- Modelo de MongoDB (no persiste datos)
-- Controladores REST (no expone API)
-- Redis cache
-
-Solo tiene:
-- Consumidor de eventos RabbitMQ
-- Servicio de email
-- Templates HTML
-
----
-
-## Configuracion de Docker Compose
-
-### Archivo: infrastructure/docker-compose.yml
-
-Para cada nuevo servicio, agregar un bloque similar a:
-
-```yaml
-  {service-name}:
-    build:
-      context: ..
-      dockerfile: services/{service-name}/Dockerfile
-    container_name: streamia-{service-name}
-    restart: unless-stopped
-    ports:
-      - "{PORT}:{PORT}"
-    environment:
-      NODE_ENV: development
-      PORT: {PORT}
-      MONGODB_URI: mongodb://streamia:streamia_secret@mongodb:27017/streamia_{db_name}?authSource=admin
-      REDIS_URL: redis://redis:6379
-      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
-      # Variables adicionales segun servicio
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - streamia-network
-```
-
-### Puertos y Bases de Datos
-
-| Servicio | Puerto | Base de Datos |
-|----------|--------|---------------|
-| movie-service | 3002 | streamia_movies |
-| favorites-service | 3003 | streamia_favorites |
-| rating-service | 3004 | streamia_ratings |
-| comment-service | 3005 | streamia_comments |
-| notification-service | 3006 | - (sin BD) |
-
----
-
-## Eventos y Comunicacion
-
-### Mapa Completo de Eventos
+### Tipos de Comunicación
 
 ```mermaid
 flowchart TB
-    subgraph User Service
-        UE1[user.registered]
-        UE2[user.deleted]
-        UE3[user.updated]
+    subgraph "Comunicación Síncrona"
+        direction LR
+        C[Cliente] -->|REST/HTTP| GW[API Gateway]
+        GW -->|REST/HTTP| SVC[Microservicio]
     end
 
-    subgraph Movie Service
-        ME1[movie.created]
-        ME2[movie.deleted]
-        ME3[movie.updated]
+    subgraph "Comunicación Asíncrona"
+        direction LR
+        P[Productor] -->|Publish| RMQ[RabbitMQ]
+        RMQ -->|Subscribe| CON[Consumidor]
     end
-
-    subgraph Rating Service
-        RE1[rating.created]
-        RE2[rating.updated]
-        RE3[rating.deleted]
-    end
-
-    subgraph Favorites Service
-        FE1[favorite.added]
-        FE2[favorite.removed]
-    end
-
-    subgraph Comment Service
-        CE1[comment.created]
-        CE2[comment.deleted]
-    end
-
-    subgraph Notification Service
-        NS[Consumidor]
-    end
-
-    UE1 --> |email bienvenida| NS
-    UE2 --> FE2 & RE3 & CE2
-    ME2 --> FE2 & RE3 & CE2
-    RE1 & RE2 & RE3 --> |recalcular promedio| ME3
 ```
 
-### Archivo: shared/src/events/constants.ts
-
-Los eventos ya estan definidos. Verificar que incluya:
-- Todos los eventos de USER
-- Todos los eventos de MOVIE
-- Todos los eventos de FAVORITES
-- Todos los eventos de RATING
-- Todos los eventos de COMMENT
-- Todos los eventos de NOTIFICATION
-
-### Patron de Suscripcion
-
-Cada servicio debe suscribirse a los eventos relevantes en su archivo `index.ts`:
-
-```mermaid
-sequenceDiagram
-    participant SVC as Servicio
-    participant EB as EventBus
-    participant RMQ as RabbitMQ
-
-    SVC->>EB: subscribe(EVENT_NAME, handler)
-    EB->>RMQ: Crear queue y binding
-    RMQ-->>EB: Confirmacion
-    
-    Note over RMQ: Cuando llega evento...
-    
-    RMQ->>EB: Mensaje recibido
-    EB->>SVC: handler(event)
-    SVC-->>EB: Procesado
-    EB->>RMQ: ACK
-```
+| Tipo | Uso | Ejemplo |
+|------|-----|---------|
+| **Síncrono (REST)** | Operaciones que requieren respuesta inmediata | GET /movies, POST /login |
+| **Asíncrono (RabbitMQ)** | Eventos, notificaciones, operaciones en background | user.deleted, movie.uploaded |
 
 ---
 
-## Orden de Implementacion Recomendado
+## Infraestructura y Herramientas
+
+### Stack Tecnológico
+
+```mermaid
+flowchart TB
+    subgraph "Desarrollo"
+        TS[TypeScript]
+        NODE[Node.js]
+        EXP[Express.js]
+    end
+
+    subgraph "Mensajería"
+        RMQ[RabbitMQ]
+    end
+
+    subgraph "Base de Datos"
+        MONGO[MongoDB]
+        REDIS[Redis]
+    end
+
+    subgraph "API Gateway"
+        EG[Express Gateway]
+    end
+
+    subgraph "Contenedores"
+        DOCKER[Docker]
+        K8S[Kubernetes]
+    end
+
+    subgraph "Observabilidad"
+        PROM[Prometheus]
+        GRAF[Grafana]
+        JAEGER[Jaeger]
+        ELK[ELK Stack]
+    end
+
+    subgraph "Externos"
+        CLD[Cloudinary]
+        SMTP[SMTP]
+    end
+```
+
+### Tabla de Herramientas
+
+| Categoría | Herramienta | Propósito |
+|-----------|-------------|-----------|
+| **Backend** | Node.js + TypeScript + Express | Framework base para microservicios |
+| **Message Broker** | RabbitMQ | Comunicación asíncrona entre servicios |
+| **Base de Datos** | MongoDB | Almacenamiento principal de cada servicio |
+| **Caché** | Redis | Caché distribuido, sesiones |
+| **API Gateway** | Express Gateway | Punto de entrada, auth, rate limiting |
+| **Contenedores** | Docker | Empaquetado de servicios |
+| **Orquestación** | Kubernetes | Despliegue, escalado, self-healing |
+| **Métricas** | Prometheus + Grafana | Monitoreo y dashboards |
+| **Tracing** | Jaeger | Distributed tracing |
+| **Logging** | ELK Stack | Logs centralizados |
+| **Media** | Cloudinary | Almacenamiento de videos y assets |
+
+---
+
+## Testing y Monitoreo
+
+### Estrategia de Testing
+
+```mermaid
+flowchart TB
+    subgraph "Piramide de Testing"
+        direction TB
+        E2E["E2E Tests - 10%"]
+        INT["Integration Tests - 30%"]
+        UNIT["Unit Tests - 60%"]
+        
+        E2E --- INT
+        INT --- UNIT
+    end
+
+    E2E --> |"Cypress/Playwright"| FULL[Flujos completos]
+    INT --> |"Supertest + TestContainers"| API[APIs + BD]
+    UNIT --> |"Jest/Vitest"| FUNC[Funciones aisladas]
+    
+    style E2E fill:#ff6b6b,color:#fff
+    style INT fill:#feca57,color:#000
+    style UNIT fill:#1dd1a1,color:#fff
+```
+
+#### Tipos de Tests por Servicio
+
+| Tipo | Herramienta | Qué Testea | Ejemplo |
+|------|-------------|------------|---------|
+| **Unit** | Jest/Vitest | Funciones, validadores, helpers | Validar email format |
+| **Integration** | Supertest + TestContainers | APIs + Base de datos | POST /register guarda en BD |
+| **Contract** | Pact | Contratos entre servicios | User Service → Notification Service |
+| **E2E** | Playwright | Flujos completos del sistema | Registro → Login → Agregar favorito |
+
+### Observabilidad
+
+#### Los Tres Pilares
+
+```mermaid
+flowchart TB
+    subgraph "Observabilidad"
+        LOG[📝 Logging]
+        MET[📊 Metrics]
+        TRA[🔍 Tracing]
+    end
+
+    subgraph "Herramientas"
+        ELK[ELK Stack]
+        PROM[Prometheus]
+        JAEGER[Jaeger]
+    end
+
+    subgraph "Visualización"
+        KIB[Kibana]
+        GRAF[Grafana]
+        JAEGER_UI[Jaeger UI]
+    end
+
+    LOG --> ELK --> KIB
+    MET --> PROM --> GRAF
+    TRA --> JAEGER --> JAEGER_UI
+```
+
+#### Flujo de Logs Centralizado
 
 ```mermaid
 flowchart LR
-    A[1. Movie Service] --> B[2. Favorites Service]
-    B --> C[3. Rating Service]
-    C --> D[4. Comment Service]
-    D --> E[5. Notification Service]
+    subgraph "Microservicios"
+        US[User Service]
+        MS[Movie Service]
+        FS[Favorites Service]
+    end
+
+    subgraph "ELK Stack"
+        FB[Filebeat]
+        LS[Logstash]
+        ES[(Elasticsearch)]
+        KIB[Kibana]
+    end
+
+    US --> FB
+    MS --> FB
+    FS --> FB
+    FB --> LS --> ES --> KIB
 ```
 
-### Justificacion
+#### Métricas Clave
 
-1. **Movie Service**: Es la entidad central, otros servicios dependen de el
-2. **Favorites Service**: Dependencia simple con User y Movie
-3. **Rating Service**: Similar a Favorites pero con logica de promedios
-4. **Comment Service**: Mas complejo por comentarios anidados
-5. **Notification Service**: Puede implementarse en paralelo, solo consume eventos
+```mermaid
+flowchart TB
+    subgraph "Métricas por Servicio"
+        REQ[Request Rate<br/>req/sec]
+        LAT[Latency<br/>p50, p95, p99]
+        ERR[Error Rate<br/>%]
+        SAT[Saturation<br/>CPU, Memory]
+    end
+
+    subgraph "Métricas de Negocio"
+        USERS[Usuarios registrados]
+        MOVIES[Películas subidas]
+        RATINGS[Ratings promedio]
+    end
+```
+
+#### Distributed Tracing
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant GW as Gateway
+    participant US as User Service
+    participant FS as Favorites Service
+    participant DB as MongoDB
+
+    Note over C,DB: Trace ID: abc-123
+
+    C->>GW: GET /favorites
+    Note right of GW: Span 1
+    GW->>US: Validate JWT
+    Note right of US: Span 2
+    US-->>GW: User valid
+    GW->>FS: GET favorites
+    Note right of FS: Span 3
+    FS->>DB: Query
+    Note right of DB: Span 4
+    DB-->>FS: Results
+    FS-->>GW: Favorites list
+    GW-->>C: Response
+
+    Note over C,DB: Jaeger muestra el trace completo
+```
 
 ---
 
+## Despliegue con Kubernetes
 
-## Consideraciones Adicionales
+### Arquitectura de Despliegue
 
-### Manejo de Errores
+```mermaid
+flowchart TB
+    subgraph "Kubernetes Cluster"
+        subgraph "Ingress"
+            ING[Nginx Ingress]
+        end
 
-Cada servicio debe implementar:
-- Middleware de errores global
-- Logging estructurado
-- Respuestas de error consistentes
+        subgraph "Services Namespace"
+            subgraph "User Service Pod"
+                US1[Container 1]
+                US2[Container 2]
+            end
+            subgraph "Movie Service Pod"
+                MS1[Container 1]
+                MS2[Container 2]
+            end
+            subgraph "Otros Pods"
+                OTHER[...]
+            end
+        end
 
-### Cache Strategy
+        subgraph "Infrastructure Namespace"
+            RMQ[RabbitMQ StatefulSet]
+            REDIS[Redis StatefulSet]
+            MONGO[MongoDB StatefulSet]
+        end
 
-Para Movie Service:
-- Cache de lista de peliculas (TTL corto)
-- Cache de pelicula individual (TTL medio)
-- Invalidacion en eventos de update/delete
+        subgraph "Monitoring Namespace"
+            PROM[Prometheus]
+            GRAF[Grafana]
+            JAEGER[Jaeger]
+        end
+    end
 
-### Idempotencia
+    INTERNET[🌐 Internet] --> ING
+    ING --> US1 & US2 & MS1 & MS2
+```
 
-Los handlers de eventos deben ser idempotentes:
-- Verificar si la operacion ya se realizo
-- Usar el `eventId` para deduplicacion
+### Componentes de Kubernetes
+
+```mermaid
+flowchart LR
+    subgraph "Por cada Microservicio"
+        DEP[Deployment]
+        SVC[Service]
+        HPA[HorizontalPodAutoscaler]
+        CM[ConfigMap]
+        SEC[Secret]
+    end
+
+    DEP --> |"Gestiona"| POD[Pods]
+    SVC --> |"Expone"| POD
+    HPA --> |"Escala"| DEP
+    CM --> |"Config"| POD
+    SEC --> |"Secrets"| POD
+```
+
+### Estrategia de Escalado
+
+```mermaid
+flowchart TB
+    subgraph "Auto Scaling"
+        HPA[HPA - Horizontal Pod Autoscaler]
+        
+        HPA --> |"CPU > 70%"| SCALE_UP[Scale Up]
+        HPA --> |"CPU < 30%"| SCALE_DOWN[Scale Down]
+        
+        SCALE_UP --> |"Max: 10 pods"| PODS1[Más réplicas]
+        SCALE_DOWN --> |"Min: 2 pods"| PODS2[Menos réplicas]
+    end
+```
 
 ### Health Checks
 
-Cada servicio debe exponer:
-- `GET /health`: Estado general
-- `GET /health/live`: Liveness probe para Kubernetes
-- `GET /health/ready`: Readiness probe (verifica dependencias)
+```mermaid
+flowchart LR
+    subgraph "Health Probes"
+        LP[Liveness Probe<br/>/health/live]
+        RP[Readiness Probe<br/>/health/ready]
+    end
+
+    K8S[Kubernetes] --> LP
+    K8S --> RP
+
+    LP --> |"Falla"| RESTART[Reinicia Pod]
+    RP --> |"Falla"| REMOVE[Quita del Service]
+```
+
+---
+
+## Estructura de Carpetas del Proyecto
+
+```
+streamia-microservices/
+├── services/
+│   ├── user-service/
+│   │   ├── src/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   ├── movie-service/
+│   │   ├── src/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   ├── favorites-service/
+│   │   ├── src/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   ├── rating-service/
+│   │   ├── src/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   ├── comment-service/
+│   │   ├── src/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   └── notification-service/
+│       ├── src/
+│       ├── Dockerfile
+│       └── package.json
+├── gateway/
+│   └── express-gateway/
+│       ├── config/
+│       │   ├── gateway.config.yml
+│       │   └── system.config.yml
+│       └── Dockerfile
+├── infrastructure/
+│   ├── docker-compose.yml
+│   └── kubernetes/
+│       ├── namespaces/
+│       ├── services/
+│       ├── deployments/
+│       ├── configmaps/
+│       └── secrets/
+├── shared/
+│   ├── events/
+│   └── types/
+└── docs/
+    └── arquitectura-microservicios.md
+```
+
+---
+
+## Resumen Visual
+
+```mermaid
+flowchart TB
+    subgraph "🎯 Streamia Microservices"
+        direction TB
+        
+        subgraph "Entrada"
+            CLIENT[Clientes] --> GW[Express Gateway]
+        end
+
+        subgraph "Servicios"
+            GW --> US[👤 Users]
+            GW --> MS[🎬 Movies]
+            GW --> FS[⭐ Favorites]
+            GW --> RS[📊 Ratings]
+            GW --> CS[💬 Comments]
+        end
+
+        subgraph "Eventos"
+            US & MS & FS & RS & CS <--> RMQ[🐰 RabbitMQ]
+            RMQ --> NS[📧 Notifications]
+        end
+
+        subgraph "Datos"
+            US --> DB1[(MongoDB)]
+            MS --> DB2[(MongoDB)]
+            FS --> DB3[(MongoDB)]
+            RS --> DB4[(MongoDB)]
+            CS --> DB5[(MongoDB)]
+            GW --> REDIS[(Redis)]
+        end
+
+        subgraph "Observabilidad"
+            ALL[Todos los servicios] --> PROM[Prometheus]
+            ALL --> ELK[ELK]
+            ALL --> JAEGER[Jaeger]
+        end
+    end
+
+    K8S[☸️ Kubernetes] --> |"Orquesta"| ALL
+```
+
+---
+
+## Conclusión
+
+Esta arquitectura de microservicios para Streamia ofrece:
+
+| Beneficio | Descripción |
+|-----------|-------------|
+| **Escalabilidad** | Cada servicio escala independientemente según demanda |
+| **Resiliencia** | Fallos aislados, sin cascadas con Circuit Breaker |
+| **Mantenibilidad** | Equipos pueden trabajar en servicios independientes |
+| **Flexibilidad** | Fácil agregar nuevas funcionalidades |
+| **Observabilidad** | Monitoreo completo con los tres pilares |
+
+### Patrones Implementados
+
+- ✅ **Saga Pattern** - Transacciones distribuidas con compensación
+- ✅ **API Gateway** - Punto de entrada único con Express Gateway
+- ✅ **Circuit Breaker** - Prevención de fallos en cascada
+- ✅ **Database per Service** - Independencia de datos
+- ✅ **Choreography** - Comunicación desacoplada vía eventos
+
+### Próximos Pasos
+
+1. Configurar repositorio con estructura de carpetas
+2. Implementar User Service como primer microservicio
+3. Configurar RabbitMQ y definir eventos
+4. Implementar Express Gateway
+5. Configurar Docker Compose para desarrollo local
+6. Implementar resto de microservicios
+7. Configurar Kubernetes para producción
+8. Implementar observabilidad

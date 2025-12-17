@@ -2,7 +2,7 @@ services:
   # ===========================================
   # Infrastructure Services
   # ===========================================
-  
+
   # MongoDB - Primary database
   mongodb:
     image: mongo:7
@@ -48,7 +48,7 @@ services:
     container_name: streamia-rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"   # AMQP port
+      - "5672:5672" # AMQP port
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: streamia
@@ -67,7 +67,7 @@ services:
   # ===========================================
   # API Gateway
   # ===========================================
-  
+
   api-gateway:
     build:
       context: ../gateway/express-gateway
@@ -166,6 +166,30 @@ services:
   # Notification Service (placeholder)
   # notification-service:
   #   ...
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    container_name: streamia-notification-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+      # Variables adicionales segun servicio
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 # ===========================================
 # Networks
