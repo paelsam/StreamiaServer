@@ -51,7 +51,7 @@ export function createApp(): Application {
   });
 
   // Authentication middleware
-  // app.use(authMiddleware);
+  app.use(authMiddleware);
 
   // Proxy routes
   app.use('/api/v1', createProxyRoutes());
