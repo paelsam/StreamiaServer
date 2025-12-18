@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: streamia/user-service:latest
+          image: andresmg42/streamia-user-service:latest
           ports:
             - containerPort: 3001
           # Carga todas las variables del ConfigMap
@@ -35,10 +35,10 @@ spec:
             - name: PORT
               value: "3001"
             # Mapea MONGODB_URI desde el secret específico
-            - name: MONGODB_URI
+            - name: MONGODB_URI_USERS
               valueFrom:
-                secretKeyRef:
-                  name: streamia-secrets
+                configMapKeyRef:
+                  name: streamia-config
                   key: MONGODB_URI_USERS
           resources:
             requests:

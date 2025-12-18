@@ -118,7 +118,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
-      MONGODB_URI: mongodb://streamia:streamia_secret@mongodb:27017/streamia_users?authSource=admin
+      MONGODB_URI_USERS: mongodb://streamia:streamia_secret@mongodb:27017/streamia_users?authSource=admin
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
@@ -149,7 +149,7 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}  
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET} 
       PORT: 3002
-      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_URI_MOVIES: ${MONGODB_URI_MOVIES}
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
     depends_on:
