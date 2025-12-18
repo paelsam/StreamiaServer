@@ -164,9 +164,26 @@ services:
   # favorites-service:
   #   ...
 
-  # Rating Service (placeholder)
-  # rating-service:
-  #   ...
+  rating-service:
+    build:
+      context: ..
+      dockerfile: services/rating-service/Dockerfile
+    container_name: streamia-rating-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      MONGODB_URI: ${MONGODB_URI_RATINGS}
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
 
   # Comment Service (placeholder)
   # comment-service:
