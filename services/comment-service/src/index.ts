@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import path from 'path';
+
+// Load environment variables from infrastructure/.env FIRST
+require('dotenv').config({
+  path: path.resolve(__dirname, '../../../infrastructure/.env'),
+  override: true,
+});
+
 import { createApp } from './app';
 import { connectDB, config } from './config';
 
