@@ -11,3 +11,4 @@ coverage/
 
 # Kubernetes generated files
 infrastructure/kubernetes/generated/
+*/env
