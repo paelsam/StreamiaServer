@@ -7,13 +7,15 @@ import { circuitBreakerMiddleware } from '../middlewares';
 
 // Proxy options factory
 function createProxyOptions(target: string, serviceName: string): Options {
-  return {
+  const options: Options = {
     target,
     changeOrigin: true,
     pathRewrite: {
       [`^/api/v1/${serviceName}`]: '/api/v1',
     },
-    on: {
+  };
+  
+  options.on = {
       // Handle errors for both HTTP responses and Sockets
       error: (err: Error, _req: IncomingMessage, res: ServerResponse | Socket) => {
         console.error(`[Proxy Error] ${serviceName}:`, err.message);
@@ -50,9 +52,9 @@ function createProxyOptions(target: string, serviceName: string): Options {
           proxyReq.setHeader('x-user-email', expressReq.userEmail);
         }
       },
-    },
+    };
     // FIX: 'logLevel' removed (incompatible with v3)
-  };
+  return options;
 }
 
 export function createProxyRoutes(): Router {
