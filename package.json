@@ -22,7 +22,12 @@
     "lint": "npm run lint --workspaces",
     "docker:up": "docker-compose -f infrastructure/docker-compose.yml up -d",
     "docker:down": "docker-compose -f infrastructure/docker-compose.yml down",
-    "docker:logs": "docker-compose -f infrastructure/docker-compose.yml logs -f"
+    "docker:logs": "docker-compose -f infrastructure/docker-compose.yml logs -f",
+    "k8s:generate-secrets": "bash infrastructure/scripts/generate-k8s-secrets.sh",
+    "k8s:deploy": "bash infrastructure/scripts/deploy-infrastructure.sh",
+    "k8s:deploy:win": "powershell -ExecutionPolicy Bypass -File infrastructure/scripts/deploy-infrastructure.ps1",
+    "k8s:setup": "npm run k8s:generate-secrets && npm run k8s:deploy",
+    "k8s:setup:win": "powershell -ExecutionPolicy Bypass -File infrastructure/scripts/generate-k8s-secrets.ps1 && npm run k8s:deploy:win"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
