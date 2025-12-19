@@ -3,6 +3,7 @@ import { Comment } from '../models/Comment';
 import { AuthRequest } from '../middlewares';
 
 export class CommentController {
+
   /**
    * Get all comments for a movie
    */
@@ -11,15 +12,27 @@ export class CommentController {
       const { movieId } = req.params;
       const { page = 1, limit = 10 } = req.query;
 
+      console.log(`\n📥 [getCommentsByMovie] Request:`);
+      console.log(`   movieId: ${movieId}`);
+      console.log(`   page: ${page}, limit: ${limit}`);
+
       const skip = (Number(page) - 1) * Number(limit);
 
-      const comments = await Comment.find({ movieId, parentCommentId: null })
+      const query = { movieId };
+      console.log(`   Query object:`, query);
+
+      const comments = await Comment.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
-        .populate('replies');
+        .limit(Number(limit));
 
-      const total = await Comment.countDocuments({ movieId, parentCommentId: null });
+      console.log(`   ✅ Found ${comments.length} comments`);
+      if (comments.length > 0) {
+        console.log(`   Sample:`, JSON.stringify(comments[0], null, 2).substring(0, 200));
+      }
+
+      const total = await Comment.countDocuments(query);
+      console.log(`   Total count: ${total}\n`);
 
       res.json({
         success: true,
@@ -32,19 +45,22 @@ export class CommentController {
         },
       });
     } catch (error) {
-      console.error('Error fetching comments:', error);
-      res.status(500).json({ success: false, error: 'Failed to fetch comments', details: error instanceof Error ? error.message : 'Unknown error' });
+      console.error('❌ [getCommentsByMovie] Error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch comments',
+      });
     }
   }
 
   /**
-   * Get a single comment with replies
+   * Get a single comment by ID
    */
   static async getCommentById(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { commentId } = req.params;
 
-      const comment = await Comment.findById(commentId).populate('replies');
+      const comment = await Comment.findById(commentId);
 
       if (!comment) {
         res.status(404).json({ success: false, error: 'Comment not found' });
@@ -62,21 +78,21 @@ export class CommentController {
    */
   static async createComment(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { movieId, content, rating } = req.body;
+      const { movieId, text } = req.body;
       const userId = req.userId!;
-      const username = req.username!;
 
-      if (!movieId || !content) {
-        res.status(400).json({ success: false, error: 'Missing required fields' });
+      if (!movieId || !text) {
+        res.status(400).json({
+          success: false,
+          error: 'movieId and text are required',
+        });
         return;
       }
 
       const comment = new Comment({
         movieId,
         userId,
-        username,
-        content,
-        rating,
+        text,
       });
 
       await comment.save();
@@ -88,47 +104,12 @@ export class CommentController {
   }
 
   /**
-   * Add a reply to a comment
-   */
-  static async addReply(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      const { commentId } = req.params;
-      const { content } = req.body;
-      const userId = req.userId!;
-      const username = req.username!;
-
-      const parentComment = await Comment.findById(commentId);
-
-      if (!parentComment) {
-        res.status(404).json({ success: false, error: 'Parent comment not found' });
-        return;
-      }
-
-      const reply = new Comment({
-        movieId: parentComment.movieId,
-        userId,
-        username,
-        content,
-        parentCommentId: commentId,
-      });
-
-      await reply.save();
-      parentComment.replies.push(reply._id);
-      await parentComment.save();
-
-      res.status(201).json({ success: true, data: reply });
-    } catch (error) {
-      res.status(500).json({ success: false, error: 'Failed to add reply' });
-    }
-  }
-
-  /**
    * Update a comment
    */
   static async updateComment(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { commentId } = req.params;
-      const { content, rating } = req.body;
+      const { text } = req.body;
       const userId = req.userId!;
 
       const comment = await Comment.findById(commentId);
@@ -139,12 +120,14 @@ export class CommentController {
       }
 
       if (comment.userId !== userId) {
-        res.status(403).json({ success: false, error: 'Unauthorized to update this comment' });
+        res.status(403).json({
+          success: false,
+          error: 'Unauthorized to update this comment',
+        });
         return;
       }
 
-      if (content) comment.content = content;
-      if (rating !== undefined) comment.rating = rating;
+      if (text) comment.text = text;
 
       await comment.save();
 
@@ -170,18 +153,11 @@ export class CommentController {
       }
 
       if (comment.userId !== userId) {
-        res.status(403).json({ success: false, error: 'Unauthorized to delete this comment' });
-        return;
-      }
-
-      // If it's a reply, remove it from parent comment
-      if (comment.parentCommentId) {
-        await Comment.findByIdAndUpdate(comment.parentCommentId, {
-          $pull: { replies: commentId },
+        res.status(403).json({
+          success: false,
+          error: 'Unauthorized to delete this comment',
         });
-      } else {
-        // If it's a main comment, delete all its replies
-        await Comment.deleteMany({ parentCommentId: commentId });
+        return;
       }
 
       await Comment.findByIdAndDelete(commentId);
@@ -189,6 +165,39 @@ export class CommentController {
       res.json({ success: true, message: 'Comment deleted successfully' });
     } catch (error) {
       res.status(500).json({ success: false, error: 'Failed to delete comment' });
+    }
+  }
+
+  /**
+   * Add a reply to a comment
+   */
+  static async addReply(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { commentId } = req.params;
+      const { text } = req.body;
+      const userId = req.userId!;
+
+      const parentComment = await Comment.findById(commentId);
+
+      if (!parentComment) {
+        res.status(404).json({ success: false, error: 'Parent comment not found' });
+        return;
+      }
+
+      const reply = new Comment({
+        movieId: parentComment.movieId,
+        userId,
+        text,
+        parentCommentId: commentId,
+      });
+
+      await reply.save();
+      parentComment.replies.push(reply._id);
+      await parentComment.save();
+
+      res.status(201).json({ success: true, data: reply });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to add reply' });
     }
   }
 

@@ -7,6 +7,9 @@ const PORT = config.port;
 
 async function startServer() {
   try {
+    console.log('🔧 [INDEX] Starting server...');
+    console.log(`🔧 [INDEX] MongoDB URI: ${config.mongoUri.substring(0, 50)}...`);
+    
     // Connect to MongoDB
     await connectDB();
 
