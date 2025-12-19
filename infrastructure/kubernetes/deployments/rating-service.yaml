@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rating-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: rating-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: streamia
+      service: rating-service
+  template:
+    metadata:
+      labels:
+        app: streamia
+        service: rating-service
+    spec:
+      containers:
+        - name: rating-service
+          image: andresmg42/streamia-rating-service:latest
+          ports:
+            - containerPort: 3004
+
+          # Load shared config + secrets
+          envFrom:
+            - configMapRef:
+                name: streamia-config
+            - secretRef:
+                name: streamia-secrets
+
+          env:
+            # Service-specific variables
+            - name: PORT
+              value: "3004"
+
+            # MongoDB for ratings
+            - name: MONGODB_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: streamia-config
+                  key: MONGODB_URI_RATINGS
+
+            # RabbitMQ
+            - name: RABBITMQ_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: streamia-config
+                  key: RABBITMQ_URL
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3004
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rating-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: rating-service
+spec:
+  selector:
+    app: streamia
+    service: rating-service
+  ports:
+    - port: 3004
+      targetPort: 3004
+      protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rating-service-hpa
+  namespace: streamia
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rating-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
