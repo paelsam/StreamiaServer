@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ratings-mongodb
+  namespace: streamia
+  labels:
+    app: ratings-mongodb
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+    name: mongodb
+  selector:
+    app: ratings-mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ratings-mongodb
+  namespace: streamia
+  labels:
+    app: ratings-mongodb
+spec:
+  serviceName: ratings-mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ratings-mongodb
+  template:
+    metadata:
+      labels:
+        app: ratings-mongodb
+    spec:
+      containers:
+      - name: ratings-mongodb
+        image: mongo:7.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 27017
+          name: mongodb
+          protocol: TCP
+        env:
+        # Root user credentials from ConfigMap and Secret
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: streamia-config
+              key: MONGODB_RATINGS_USER
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: streamia-secrets
+              key: MONGODB_RATINGS_PASSWORD
+        - name: MONGO_INITDB_DATABASE
+          value: "admin"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 15
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 90
+          periodSeconds: 5
+          timeoutSeconds: 15
+          failureThreshold: 5
+        volumeMounts:
+        - name: ratings-mongodb-storage
+          mountPath: /data/db
+        - name: ratings-mongodb-init
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: ratings-mongodb-storage
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: ratings-mongodb-init
+        configMap:
+          name: ratings-mongodb-init
+          optional: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ratings-mongodb-init
+  namespace: streamia
+data:
+  init-ratings.js: |
+    // Initialize ratings database and collections
+    db = db.getSiblingDB('streamia_ratings');
+    db.createCollection('ratings', { capped: false });
+    db.ratings.createIndex({ userId: 1, movieId: 1 }, { unique: true });
+    db.ratings.createIndex({ userId: 1 });
+    db.ratings.createIndex({ movieId: 1 });

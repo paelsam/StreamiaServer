@@ -7,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use("/ratings", ratingRoutes);
+app.use("/api/v1/ratings", ratingRoutes);
 
 app.get("/health/live", (_req, res) => {
   res.status(200).json({
