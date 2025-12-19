@@ -18,11 +18,13 @@ GATEWAY_DIR="$REPO_ROOT/../gateway/express-gateway"
 MOVIE_DIR="$REPO_ROOT/../services/movie-service"
 USER_DIR="$REPO_ROOT/../services/user-service"
 RATING_DIR="$REPO_ROOT/../services/rating-service"
+COMMENT_DIR="$REPO_ROOT/../services/comment-service"
 
 GATEWAY_REPO="$DOCKER_USERNAME/gateway"
 MOVIE_REPO="$DOCKER_USERNAME/movie-service"
 USER_REPO="$DOCKER_USERNAME/user-service"
 RATING_REPO="$DOCKER_USERNAME/streamia-rating-service"
+COMMENT_REPO="$DOCKER_USERNAME/comment-service"
 
 function ensure_docker() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -59,6 +61,7 @@ build_and_push "$GATEWAY_DIR" "$GATEWAY_REPO"
 build_and_push "$MOVIE_DIR" "$MOVIE_REPO"
 build_and_push "$USER_DIR" "$USER_REPO"
 build_and_push "$RATING_DIR" "$RATING_REPO"
+build_and_push "$COMMENT_DIR" "$COMMENT_REPO"
 
 echo "\nAll images built and pushed as $DOCKER_USERNAME/*:$TAG"
 

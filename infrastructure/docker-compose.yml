@@ -184,10 +184,27 @@ services:
         condition: service_healthy
     networks:
       - streamia-network
-
-  # Comment Service (placeholder)
-  # comment-service:
-  #   ...
+  
+  comment-service:
+    build:
+      context: ..
+      dockerfile: services/comment-service/Dockerfile
+    container_name: streamia-comment-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      MONGODB_URI: ${MONGODB_URI_COMMENTS}
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
 
   # Notification Service (placeholder)
   # notification-service:
