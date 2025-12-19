@@ -43,3 +43,12 @@ services:
       - ../shared/src:/app/shared/src:ro
     environment:
       NODE_ENV: development
+
+  rating-service:
+    build:
+      context: ..
+      dockerfile: services/rating-service/Dockerfile
+    volumes:
+      - ../services/rating-service/src:/app/src:ro
+    environment:
+      NODE_ENV: development
