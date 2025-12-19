@@ -9,7 +9,7 @@
     "shared"
   ],
   "scripts": {
-    "dev": "docker-compose -f infrastructure/docker-compose.yml up -d && concurrently \"npm run dev:user\" \"npm run dev:gateway\"",
+    "dev": "docker-compose -f infrastructure/docker-compose.yml up -d mongodb redis rabbitmq && concurrently \"npm run dev:user\" \"npm run dev:gateway\"",
     "dev:user": "npm run dev --workspace=services/user-service",
     "dev:movie": "npm run dev --workspace=services/movie-service",
     "dev:favorites": "npm run dev --workspace=services/favorites-service",
