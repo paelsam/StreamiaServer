@@ -219,6 +219,11 @@ function Main {
     }
     Write-Host ""
     
+    if (-not (Wait-ForStatefulSet -Name "ratings-mongodb" -Timeout $TimeoutSeconds)) {
+        $allReady = $false
+    }
+    Write-Host ""
+    
     if (-not $allReady) {
         Write-ErrorMsg "Some infrastructure services failed to become ready"
         Write-Info "Check pod status with: kubectl get pods -n streamia"

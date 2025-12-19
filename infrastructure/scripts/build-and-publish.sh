@@ -12,17 +12,19 @@ TAG="${TAG:-latest}"
 BUILD_ARGS="${BUILD_ARGS:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-GATEWAY_DIR="$REPO_ROOT/../gateway/express-gateway"
-MOVIE_DIR="$REPO_ROOT/../services/movie-service"
-USER_DIR="$REPO_ROOT/../services/user-service"
-RATING_DIR="$REPO_ROOT/../services/rating-service"
+GATEWAY_DOCKERFILE="$REPO_ROOT/gateway/express-gateway/Dockerfile"
+MOVIE_DOCKERFILE="$REPO_ROOT/services/movie-service/Dockerfile"
+USER_DOCKERFILE="$REPO_ROOT/services/user-service/Dockerfile"
+RATING_DOCKERFILE="$REPO_ROOT/services/rating-service/Dockerfile"
+NOTIFICATION_DOCKERFILE="$REPO_ROOT/services/notification-service/Dockerfile"
 
 GATEWAY_REPO="$DOCKER_USERNAME/gateway"
 MOVIE_REPO="$DOCKER_USERNAME/movie-service"
 USER_REPO="$DOCKER_USERNAME/user-service"
 RATING_REPO="$DOCKER_USERNAME/streamia-rating-service"
+NOTIFICATION_REPO="$DOCKER_USERNAME/streamia-notification-service"
 
 function ensure_docker() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -41,13 +43,13 @@ function docker_login_if_needed() {
 }
 
 function build_and_push() {
-  local path="$1" repo="$2"
-  if [ ! -d "$path" ]; then
-    echo "Directory not found: $path" >&2
+  local dockerfile="$1" repo="$2"
+  if [ ! -f "$dockerfile" ]; then
+    echo "Dockerfile not found: $dockerfile" >&2
     exit 1
   fi
-  echo "\n==> Building $repo:$TAG from $path"
-  docker build -t "$repo:$TAG" $BUILD_ARGS "$path"
+  echo "\n==> Building $repo:$TAG from $dockerfile"
+  docker build -t "$repo:$TAG" -f "$dockerfile" $BUILD_ARGS "$REPO_ROOT"
   echo "Pushing $repo:$TAG"
   docker push "$repo:$TAG"
 }
@@ -55,10 +57,11 @@ function build_and_push() {
 ensure_docker
 docker_login_if_needed
 
-build_and_push "$GATEWAY_DIR" "$GATEWAY_REPO"
-build_and_push "$MOVIE_DIR" "$MOVIE_REPO"
-build_and_push "$USER_DIR" "$USER_REPO"
-build_and_push "$RATING_DIR" "$RATING_REPO"
+build_and_push "$GATEWAY_DOCKERFILE" "$GATEWAY_REPO"
+build_and_push "$MOVIE_DOCKERFILE" "$MOVIE_REPO"
+build_and_push "$USER_DOCKERFILE" "$USER_REPO"
+build_and_push "$RATING_DOCKERFILE" "$RATING_REPO"
+build_and_push "$NOTIFICATION_DOCKERFILE" "$NOTIFICATION_REPO"
 
 echo "\nAll images built and pushed as $DOCKER_USERNAME/*:$TAG"
 

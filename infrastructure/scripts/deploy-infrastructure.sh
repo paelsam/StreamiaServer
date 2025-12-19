@@ -182,6 +182,11 @@ main() {
     fi
     echo ""
     
+    if ! wait_for_deployment "ratings-mongodb" "$NAMESPACE" "$TIMEOUT_SECONDS"; then
+        all_ready=false
+    fi
+    echo ""
+    
     if [ "$all_ready" = false ]; then
         log_error "Some infrastructure services failed to become ready"
         log_info "Check pod status with: kubectl get pods -n $NAMESPACE"
