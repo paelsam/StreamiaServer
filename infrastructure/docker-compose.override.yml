@@ -52,3 +52,12 @@ services:
       - ../services/rating-service/src:/app/src:ro
     environment:
       NODE_ENV: development
+  
+  comment-service:
+    build:
+      context: ..
+      dockerfile: services/comment-service/Dockerfile
+    volumes:
+      - ../services/comment-service/src:/app/src:ro
+    environment:
+      NODE_ENV: development

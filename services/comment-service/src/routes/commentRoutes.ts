@@ -12,7 +12,5 @@ router.get('/:commentId', CommentController.getCommentById);
 router.post('/', authMiddleware, CommentController.createComment);
 router.put('/:commentId', authMiddleware, CommentController.updateComment);
 router.delete('/:commentId', authMiddleware, CommentController.deleteComment);
-router.post('/:commentId/reply', authMiddleware, CommentController.addReply);
-router.post('/:commentId/like', CommentController.likeComment);
 
 export default router;

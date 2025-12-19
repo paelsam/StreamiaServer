@@ -3,15 +3,25 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* yarn.lock* ./
+# Copy shared package first
+COPY shared/package.json ./shared/
+COPY shared/tsconfig.json ./shared/
+COPY shared/src ./shared/src
 
-# Install dependencies
-RUN npm ci || npm install
+# Copy comment-service package
+COPY services/comment-service/package.json ./services/comment-service/
 
-# Copy source code
-COPY tsconfig.json ./
-COPY src ./src
+# Install shared dependencies and build
+WORKDIR /app/shared
+RUN npm install && npm run build
+
+# Install comment-service dependencies
+WORKDIR /app/services/comment-service
+RUN npm install
+
+# Copy comment-service source code
+COPY services/comment-service/tsconfig.json ./
+COPY services/comment-service/src ./src
 
 # Build TypeScript
 RUN npm run build
@@ -24,14 +34,23 @@ WORKDIR /app
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init
 
-# Copy package files
-COPY package.json package-lock.json* yarn.lock* ./
+# Copy shared package
+COPY --from=builder /app/shared/package.json ./shared/
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/shared/node_modules ./shared/node_modules
 
-# Install production dependencies only
-RUN npm ci --only=production || npm install --production
+# Copy comment-service package
+COPY services/comment-service/package.json ./services/comment-service/
+
+# Install production dependencies
+WORKDIR /app/services/comment-service
+RUN npm install --production
 
 # Copy built application from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/services/comment-service/dist ./dist
+
+# Set working directory
+WORKDIR /app/services/comment-service
 
 # Expose port
 EXPOSE 3005
