@@ -1,239 +1,330 @@
-/**
- * @file favoritesController.ts
- * @description Controller for managing user favorite movies.
- * Handles CRUD operations for user favorites with Cloudinary integration.
- * @author Streamia Team
- * @version 1.0.0
- * @created 2025-10-26
- * 
- * @module Controllers/Favorites
- */
+import { Response } from "express";
+import { isValidObjectId } from 'mongoose';
+import { getFavoritesService } from "../services/favoritesService";
+import { AuthRequest } from "../middlewares/authMiddleware";
 
-import { Request, Response } from "express";
-import Favorite from "../models/Favorites";
-import Movie from "../../../movie-service/src/models/Movie";
-
-/**
- * Get all favorites for the authenticated user with complete movie data
- * @async
- * @function getFavoritesByUser
- * @route GET /api/favorites
- * @access Private
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<Response>} JSON response with user's favorites
- * @throws {Error} If database query fails
- */
-export const getFavoritesByUser = async (req: Request, res: Response) => {
-  try {
-    const userId = req.userId as string;
-    const favorites = await Favorite.find({ userId });
-
-    const favoritesWithData = await Promise.all(
-      favorites.map(async fav => {
-        try {
-          // Search in our Cloudinary database
-          let movie = await Movie.findOne({ 
-            $or: [
-              { _id: fav.movieId },
-              { cloudinaryPublicId: fav.movieId },
-              { externalId: fav.movieId }
-            ]
-          });
-
-          // If movie not found, return basic favorite data
-          if (!movie) {
-            return {
-              movieId: fav.movieId,
-              note: fav.note,
-              title: fav.title || "Movie not available",
-              poster: fav.poster || "",
-              videoUrl: ""
-            };
+export const favoritesController = {
+  /**
+   * Get all favorites for authenticated user
+   */
+  async getFavoritesByUser(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Authentication required"
           }
+        });
+      }
 
-          return {
-            movieId: movie._id.toString(),
-            note: fav.note,
-            title: movie.title,
-            poster: movie.coverImage,
-            videoUrl: movie.videoUrl,
-            // Additional Cloudinary data
-            duration: movie.duration,
-            hasAudio: movie.hasAudio,
-            category: movie.category
-          };
-        } catch (err) {
-          console.error(`❌ Error fetching movie ${fav.movieId}:`, err);
-          // If fails, return basic DB data
-          return {
-            movieId: fav.movieId,
-            note: fav.note,
-            title: fav.title || "Error loading movie",
-            poster: fav.poster || "",
-            videoUrl: ""
-          };
-        }
-      })
-    );
-
-    return res.json(favoritesWithData);
-  } catch (error) {
-    console.error("❌ Error fetching favorites:", error);
-    return res.status(500).json({ message: "Error fetching favorites" });
-  }
-};
-
-/**
- * Add a new movie to user's favorites
- * @async
- * @function addFavorite
- * @route POST /api/favorites
- * @access Private
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<Response>} JSON response with created favorite
- * @throws {Error} If authentication fails or database operation fails
- */
-export const addFavorite = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const userId = req.userId;
-    const { movieId, title, poster, note } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ message: "User not authenticated" });
-    }
-
-    // Validate required fields
-    if (!movieId) {
-      return res.status(400).json({ message: "Missing required field: movieId" });
-    }
-
-    // Get updated movie data from our database
-    let movieTitle = title;
-    let moviePoster = poster;
-
-    if (!title || !poster) {
-      const movie = await Movie.findOne({
-        $or: [
-          { _id: movieId },
-          { cloudinaryPublicId: movieId },
-          { externalId: movieId }
-        ]
+      const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = req.query as any;
+      
+      // Validar y sanitizar parámetros de paginación
+      const validatedPage = Math.max(1, parseInt(page, 10) || 1);
+      const validatedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+      
+      const favoritesService = getFavoritesService();
+      const result = await favoritesService.getFavoritesByUser(userId, {
+        page: validatedPage,
+        limit: validatedLimit,
+        sortBy,
+        sortOrder
       });
       
-      if (movie) {
-        movieTitle = movie.title;
-        moviePoster = movie.coverImage;
+      return res.status(200).json({
+        success: true,
+        data: result.favorites,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages,
+          hasMore: result.hasMore
+        },
+        meta: {
+          userId,
+          fetchedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      console.error("❌ Controller Error - getFavoritesByUser:", error);
+      
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch favorites"
+        }
+      });
+    }
+  },
+
+  /**
+   * Add movie to favorites
+   */
+  async addFavorite(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      const { movieId } = req.params;
+      const { note } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "UNAUTHORIZED", message: "Authentication required" }
+        });
       }
-    }
 
-    // Prevent duplicate favorites
-    const existing = await Favorite.findOne({ userId, movieId });
-    if (existing) {
-      return res.status(409).json({ message: "This movie is already in your favorites" });
-    }
-
-    // Create new favorite
-    const newFavorite = new Favorite({
-      userId,
-      movieId,
-      title: movieTitle || "Untitled movie",
-      poster: moviePoster || "",
-      note: note || ""
-    });
-
-    await newFavorite.save();
-    return res.status(201).json(newFavorite);
-  } catch (error) {
-    console.error("❌ Error adding favorite:", error);
-    return res.status(500).json({ message: "Failed to add movie to favorites, please try again later" });
-  }
-};
-
-/**
- * Update a favorite's note for the authenticated user
- * @async
- * @function updateFavoriteNote
- * @route PUT /api/favorites/:id
- * @access Private
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<Response>} JSON response with updated favorite
- * @throws {Error} If authentication fails or favorite not found
- */
-export const updateFavoriteNote = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const userId = req.userId;
-    const { id } = req.params;
-    const { note } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ message: "User not authenticated" });
-    }
-
-    if (!id) {
-      return res.status(400).json({ message: "Favorite ID is required" });
-    }
-
-    // Find favorite and verify ownership
-    const favorite = await Favorite.findOne({ _id: id, userId });
-    if (!favorite) {
-      return res.status(404).json({ message: "Favorite not found" });
-    }
-
-    // Update the note
-    favorite.note = note || "";
-    await favorite.save();
-
-    return res.json({
-      message: "Favorite updated successfully",
-      favorite
-    });
-  } catch (error) {
-    console.error("❌ Error updating favorite note:", error);
-    return res.status(500).json({ message: "Failed to update favorite" });
-  }
-};
-
-/**
- * Remove a movie from user's favorites
- * @async
- * @function removeFavorite
- * @route DELETE /api/favorites/:movieId
- * @access Private
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @returns {Promise<Response>} JSON response with success message
- * @throws {Error} If authentication fails or movie not found
- */
-export const removeFavorite = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const userId = req.userId;
-    const { movieId } = req.params;
-
-    if (!userId) {
-      return res.status(401).json({ message: "User not authenticated" });
-    }
-    
-    if (!movieId) {
-      return res.status(400).json({ message: "Movie ID is required" });
-    }   
-
-    const deleted = await Favorite.findOneAndDelete({ userId, movieId });
-
-    if (!deleted) {
-      return res.status(404).json({ message: "Movie not found or already removed" });
-    }
-    return res.json({ 
-      message: "Movie removed from favorites successfully",
-      removedMovie: {
-        movieId: deleted.movieId,
-        title: deleted.title
+      if (!movieId || movieId.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_INPUT", message: "Movie ID is required" }
+        });
       }
-    }); 
-  } catch (error) {
-    console.error("❌ Error removing favorite:", error);
-    return res.status(500).json({ message: "Failed to remove favorite" });
+
+      // Validar formato de ObjectId
+      if (!isValidObjectId(movieId)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_MOVIE_ID", message: "Invalid movie ID format" }
+        });
+      }
+
+      // Validar longitud de nota (opcional)
+      if (note && note.length > 500) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "NOTE_TOO_LONG", message: "Note must be less than 500 characters" }
+        });
+      }
+
+      const favoritesService = getFavoritesService();
+      const favorite = await favoritesService.addFavorite(userId, movieId, note);
+
+      return res.status(201).json({
+        success: true,
+        message: "Movie added to favorites",
+        data: favorite,
+        meta: {
+          userId,
+          movieId,
+          addedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      console.error("❌ Controller Error - addFavorite:", error);
+
+      if (error.code === "DUPLICATE_FAVORITE") {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: "DUPLICATE_FAVORITE",
+            message: "This movie is already in your favorites"
+          }
+        });
+      }
+
+      if (error.code === "NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "NOT_FOUND", 
+            message: error.message
+          }
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to add favorite"
+        }
+      });
+    }
+  },
+
+  /**
+   * Update favorite note
+   */
+  async updateFavoriteNote(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      const { movieId } = req.params;
+      const { note } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "UNAUTHORIZED", message: "Authentication required" }
+        });
+      }
+
+      // Validar formato de ObjectId
+      if (!isValidObjectId(movieId)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_MOVIE_ID", message: "Invalid movie ID format" }
+        });
+      }
+
+      // Validar longitud de nota
+      if (note && note.length > 500) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "NOTE_TOO_LONG", message: "Note must be less than 500 characters" }
+        });
+      }
+
+      const favoritesService = getFavoritesService();
+      const updated = await favoritesService.updateFavoriteNote(userId, movieId, note);
+
+      return res.status(200).json({
+        success: true,
+        message: "Favorite updated successfully",
+        data: updated
+      });
+
+    } catch (error: any) {
+      console.error("❌ Controller Error - updateFavoriteNote:", error);
+
+      if (error.code === "FAVORITE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "FAVORITE_NOT_FOUND",
+            message: "Favorite not found"
+          }
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to update favorite"
+        }
+      });
+    }
+  },
+
+  /**
+   * Remove movie from favorites
+   */
+  async removeFavorite(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      const { movieId } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "UNAUTHORIZED", message: "Authentication required" }
+        });
+      }
+
+      // Validar formato de ObjectId
+      if (!isValidObjectId(movieId)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_MOVIE_ID", message: "Invalid movie ID format" }
+        });
+      }
+
+      const favoritesService = getFavoritesService();
+      await favoritesService.removeFavorite(userId, movieId);
+
+      return res.status(200).json({
+        success: true,
+        message: "Movie removed from favorites",
+        meta: {
+          userId,
+          movieId,
+          removedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      console.error("❌ Controller Error - removeFavorite:", error);
+
+      if (error.code === "FAVORITE_NOT_FOUND") {
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: "FAVORITE_NOT_FOUND",
+            message: "Favorite not found"
+          }
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to remove favorite"
+        }
+      });
+    }
+  },
+
+  /**
+   * Check if movie is in favorites
+   */
+  async checkFavorite(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId;
+      const { movieId } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: { code: "UNAUTHORIZED", message: "Authentication required" }
+        });
+      }
+
+      // Validar formato de ObjectId
+      if (!isValidObjectId(movieId)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: "INVALID_MOVIE_ID", message: "Invalid movie ID format" }
+        });
+      }
+
+      const favoritesService = getFavoritesService();
+      const isFavorite = await favoritesService.checkFavorite(userId, movieId);
+
+      return res.status(200).json({
+        success: true,
+        data: { 
+          isFavorite,
+          movieId,
+          userId 
+        }
+      });
+
+    } catch (error: any) {
+      console.error("❌ Controller Error - checkFavorite:", error);
+      
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to check favorite status"
+        }
+      });
+    }
   }
 };
+
+// Exportar funciones individuales (compatibilidad)
+export const getFavorites = favoritesController.getFavoritesByUser;
+export const addFavorite = favoritesController.addFavorite;
+export const updateFavoriteNote = favoritesController.updateFavoriteNote;
+export const removeFavorite = favoritesController.removeFavorite;
+export const checkFavorite = favoritesController.checkFavorite;

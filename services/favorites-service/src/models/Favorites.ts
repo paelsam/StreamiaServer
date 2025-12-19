@@ -1,51 +1,158 @@
-/**
- * @file Favorite.ts
- * @description Mongoose model for user favorite movies.
- * Each favorite stores the relationship between a user and a specific movie,
- * along with optional metadata such as title, poster, and personal notes.
- * @module Models/Favorite
- * @version 1.0.0
- * @created 2025-10-26
- */
+import mongoose, { Document, Schema, Types } from "mongoose";
 
-import mongoose, { Document, Schema } from "mongoose";
-
-
-/**
- * @interface IFavorite
- * @description Defines the structure of a favorite document in MongoDB.
- * @property {string} userId - The ID of the user who added the movie to favorites.
- * @property {string} movieId - The ID or public identifier of the movie (from database or Cloudinary).
- * @property {string} title - The movie title.
- * @property {string} poster - URL of the movie poster or cover image.
- * @property {string} [note] - Optional personal note or comment about the movie.
- */
 export interface IFavorite extends Document {
-  userId: string;
-  movieId: string;
-  title: string;
-  poster: string;
+  userId: Types.ObjectId;
+  movieId: Types.ObjectId;
   note?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-/**
- * @constant favoriteSchema
- * @description Schema definition for the Favorite model.
- * Includes timestamps for automatic `createdAt` and `updatedAt` tracking.
- */
 const favoriteSchema = new Schema<IFavorite>(
   {
-    userId: { type: String, required: true },
-    movieId: { type: String, required: true },
-    title: { type: String, required: true },
-    poster: { type: String, required: true },
-    note: { type: String, default: "" }
+    userId: { 
+      type: Schema.Types.ObjectId, 
+      required: [true, 'User ID is required'],
+      index: true,
+      ref: 'User'
+    },
+    movieId: { 
+      type: Schema.Types.ObjectId, 
+      required: [true, 'Movie ID is required'],
+      index: true,
+      ref: 'Movie'
+    },
+    note: { 
+      type: String, 
+      default: "",
+      maxlength: [500, 'Note cannot exceed 500 characters'],
+      trim: true
+    }
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    versionKey: false,
+    collection: 'favorites'
+  }
 );
 
-/**
- * @description Exports the Mongoose model for managing user favorites.
- * @exports Favorite
- */
-export default mongoose.model<IFavorite>("Favorite", favoriteSchema);
+// Índice compuesto único para evitar duplicados
+favoriteSchema.index({ userId: 1, movieId: 1 }, { 
+  unique: true,
+  name: 'user_movie_unique_idx'
+});
+
+// Índice para búsquedas por usuario con paginación ordenada
+favoriteSchema.index({ userId: 1, createdAt: -1 }, {
+  name: 'user_created_desc_idx'
+});
+
+// Índice para limpieza cuando se elimina una película
+favoriteSchema.index({ movieId: 1 }, {
+  name: 'movie_idx'
+});
+
+// Método de instancia: Convertir a JSON limpio
+favoriteSchema.methods.toJSON = function() {
+  const obj = this.toObject();
+  obj.id = obj._id;
+  delete obj._id;
+  return obj;
+};
+
+// Métodos estáticos
+favoriteSchema.statics.checkExists = async function(
+  userId: string | Types.ObjectId, 
+  movieId: string | Types.ObjectId
+): Promise<boolean> {
+  const count = await this.countDocuments({ 
+    userId: new Types.ObjectId(userId), 
+    movieId: new Types.ObjectId(movieId) 
+  });
+  return count > 0;
+};
+
+favoriteSchema.statics.findByUser = async function(
+  userId: string | Types.ObjectId, 
+  options: { 
+    page?: number; 
+    limit?: number; 
+    sortBy?: string; 
+    sortOrder?: 'asc' | 'desc';
+  } = {}
+) {
+  const { 
+    page = 1, 
+    limit = 20, 
+    sortBy = 'createdAt', 
+    sortOrder = 'desc' 
+  } = options;
+  
+  const skip = (page - 1) * limit;
+  const userObjectId = new Types.ObjectId(userId);
+  
+  const [favorites, total] = await Promise.all([
+    this.find({ userId: userObjectId })
+      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    this.countDocuments({ userId: userObjectId })
+  ]);
+  
+  return { 
+    favorites, 
+    total, 
+    page, 
+    limit, 
+    totalPages: Math.ceil(total / limit),
+    hasMore: page * limit < total
+  };
+};
+
+favoriteSchema.statics.findByMovie = async function(
+  movieId: string | Types.ObjectId
+) {
+  return this.find({ movieId: new Types.ObjectId(movieId) });
+};
+
+favoriteSchema.statics.deleteByUser = async function(
+  userId: string | Types.ObjectId
+): Promise<number> {
+  const result = await this.deleteMany({ userId: new Types.ObjectId(userId) });
+  return result.deletedCount || 0;
+};
+
+favoriteSchema.statics.deleteByMovie = async function(
+  movieId: string | Types.ObjectId
+): Promise<number> {
+  const result = await this.deleteMany({ movieId: new Types.ObjectId(movieId) });
+  return result.deletedCount || 0;
+};
+
+// Interface para métodos estáticos
+interface FavoriteModel extends mongoose.Model<IFavorite> {
+  checkExists(userId: string | Types.ObjectId, movieId: string | Types.ObjectId): Promise<boolean>;
+  findByUser(
+    userId: string | Types.ObjectId, 
+    options?: { 
+      page?: number; 
+      limit?: number; 
+      sortBy?: string; 
+      sortOrder?: 'asc' | 'desc';
+    }
+  ): Promise<{ 
+    favorites: IFavorite[]; 
+    total: number; 
+    page: number; 
+    limit: number; 
+    totalPages: number;
+    hasMore: boolean;
+  }>;
+  findByMovie(movieId: string | Types.ObjectId): Promise<IFavorite[]>;
+  deleteByUser(userId: string | Types.ObjectId): Promise<number>;
+  deleteByMovie(movieId: string | Types.ObjectId): Promise<number>;
+}
+
+const Favorite = mongoose.model<IFavorite, FavoriteModel>("Favorite", favoriteSchema);
+export default Favorite;
