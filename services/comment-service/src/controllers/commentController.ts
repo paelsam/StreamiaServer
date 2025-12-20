@@ -12,7 +12,7 @@ export class CommentController {
       const { movieId } = req.params;
       const { page = 1, limit = 10 } = req.query;
 
-      console.log(`\n📥 [getCommentsByMovie] Request:`);
+      console.log(`\n [getCommentsByMovie] Request:`);
       console.log(`   movieId: ${movieId}`);
       console.log(`   page: ${page}, limit: ${limit}`);
 
@@ -26,7 +26,7 @@ export class CommentController {
         .skip(skip)
         .limit(Number(limit));
 
-      console.log(`   ✅ Found ${comments.length} comments`);
+      console.log(`  Found ${comments.length} comments`);
       if (comments.length > 0) {
         console.log(`   Sample:`, JSON.stringify(comments[0], null, 2).substring(0, 200));
       }
@@ -45,7 +45,7 @@ export class CommentController {
         },
       });
     } catch (error) {
-      console.error('❌ [getCommentsByMovie] Error:', error);
+      console.error('[getCommentsByMovie] Error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch comments',

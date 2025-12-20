@@ -57,7 +57,7 @@ export function createApp(): Application {
   });
 
   // Routes
-  app.use('/comments', commentRoutes);
+  app.use('/api/v1/comments', commentRoutes);
 
   // 404 handler
   app.use((_req, res: Response) => {
