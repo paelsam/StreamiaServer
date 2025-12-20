@@ -7,7 +7,8 @@ RUN npm install
 
 COPY . .
 
-RUN npm run build
+# Build shared package first, then build all services
+RUN npm run build --workspace=shared && npm run build --workspaces
 
 EXPOSE 3004
 
