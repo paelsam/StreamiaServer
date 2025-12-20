@@ -1,4 +1,80 @@
+
 # 🎬 Streamia: Arquitectura de Microservicios
+
+## 🚀 Pasos para ejecutar el proyecto
+
+### 1. Requisitos previos
+
+- [Docker](https://www.docker.com/) y [Docker Compose](https://docs.docker.com/compose/) instalados
+- Node.js >= 20 y npm (solo si vas a desarrollar o correr tests)
+
+### 2. Variables de entorno
+
+Crea un archivo `.env` en la raíz del proyecto y define las variables necesarias para los servicios (puedes guiarte por los archivos de ejemplo o el `docker-compose.yml`). Ejemplo de variables comunes:
+
+```
+JWT_SECRET=your-super-secret-jwt-key
+CLOUDINARY_CLOUD_NAME=xxxx
+CLOUDINARY_API_KEY=xxxx
+CLOUDINARY_API_SECRET=xxxx
+MONGODB_URI_MOVIES=mongodb://streamia:streamia_secret@mongodb:27017/streamia_movies?authSource=admin
+MONGODB_URI_FAVORITES=mongodb://streamia:streamia_secret@mongodb:27017/streamia_favorites?authSource=admin
+MONGODB_URI_RATINGS=mongodb://streamia:streamia_secret@mongodb:27017/streamia_ratings?authSource=admin
+MONGODB_URI_COMMENTS=mongodb://streamia:streamia_secret@mongodb:27017/streamia_comments?authSource=admin
+# SMTP_HOST, SMTP_USER, etc. para notificaciones
+```
+
+### 3. Levantar la infraestructura y microservicios
+
+Desde la raíz del proyecto ejecuta:
+
+```
+npm install
+npm run docker:up
+```
+
+Esto levantará MongoDB, Redis, RabbitMQ, el API Gateway y todos los microservicios.
+
+Puedes ver los logs con:
+
+```
+npm run docker:logs
+```
+
+### 4. Acceso a los servicios
+
+- API Gateway: http://localhost:3000
+- User Service: http://localhost:3001
+- Movie Service: http://localhost:3002
+- Favorites Service: http://localhost:3003
+- Rating Service: http://localhost:3004
+- Comment Service: http://localhost:3005
+- Notification Service: http://localhost:3006
+- RabbitMQ UI: http://localhost:15672 (user/pass: streamia/streamia)
+- MongoDB: mongodb://localhost:27017
+- Redis: redis://localhost:6379
+
+### 5. Parar los servicios
+
+```
+npm run docker:down
+```
+
+### 6. Ejecutar tests
+
+Puedes correr los tests de todos los servicios con:
+
+```
+npm test
+```
+
+O ver cobertura:
+
+```
+npm run test:coverage
+```
+
+---
 
 ## 📋 Índice
 

@@ -8,6 +8,8 @@ require('dotenv').config({
 
 import { createApp } from './app';
 import { connectDB, config } from './config';
+import { EventBus } from '@streamia/shared';
+import { CommentService } from './services/commentService';
 
 const app = createApp();
 const PORT = config.port;
@@ -19,6 +21,15 @@ async function startServer() {
     
     // Connect to MongoDB
     await connectDB();
+
+    // Initialize EventBus for Saga pattern
+    const eventBus = new EventBus(config.rabbitmqUrl);
+    await eventBus.connect();
+
+    // Initialize CommentService with Saga handlers
+    const commentService = new CommentService();
+    commentService.initializeEventBus(eventBus);
+    console.log('✅ [INDEX] CommentService initialized with Saga handlers');
 
     // Start the server
     app.listen(PORT, () => {
