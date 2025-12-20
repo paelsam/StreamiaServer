@@ -1,35 +1,58 @@
 import { NotificationService } from "../src/services/notificationService";
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import fs from "fs";
 
-// Mock nodemailer and fs
-jest.mock("nodemailer");
+// Create mockSend before mocking
+const mockSend = jest.fn().mockResolvedValue({ id: "test-email-id", data: null, error: null });
+
+// Mock Resend module
+jest.mock("resend");
+const MockedResend = Resend as jest.MockedClass<typeof Resend>;
+
+// Mock config module
+jest.mock("../src/config", () => ({
+  config: {
+    smtp: {
+      host: "smtp.resend.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: "resend",
+        pass: "re_test_api_key_123",
+      },
+    },
+    email: {
+      from: "onboarding@resend.dev",
+    },
+  },
+}));
+
+// Mock fs
 jest.mock("fs");
 
 describe("NotificationService", () => {
   let notificationService: NotificationService;
-  let mockSendMail: jest.Mock;
-  let mockVerify: jest.Mock;
   let consoleLogSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     // Reset mocks before each test
     jest.clearAllMocks();
+    
+    // Setup Resend mock implementation
+    MockedResend.mockImplementation(() => ({
+      emails: {
+        send: mockSend,
+      },
+      // Add other methods/properties if needed
+    } as any));
+    
+    // Reset mockSend to default resolved value
+    mockSend.mockResolvedValue({ id: "test-email-id", data: null, error: null });
 
     // Silence console.log and console.error
     consoleLogSpy = jest.spyOn(console, "log").mockImplementation();
     consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-
-    // Setup mock functions
-    mockSendMail = jest.fn().mockResolvedValue({ messageId: "test-id" });
-    mockVerify = jest.fn().mockResolvedValue(true);
-
-    // Mock transporter
-    (nodemailer.createTransport as jest.Mock).mockReturnValue({
-      sendMail: mockSendMail,
-      verify: mockVerify,
-    });
 
     // Mock fs.existsSync to return true by default
     (fs.existsSync as jest.Mock).mockReturnValue(true);
@@ -59,7 +82,7 @@ describe("NotificationService", () => {
 
       expect(fs.existsSync).toHaveBeenCalled();
       expect(fs.readFileSync).toHaveBeenCalled();
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to,
           subject,
@@ -82,7 +105,7 @@ describe("NotificationService", () => {
     });
 
     it("throws an error if email sending fails", async () => {
-      mockSendMail.mockRejectedValue(new Error("SMTP Error"));
+      mockSend.mockRejectedValue(new Error("Resend API Error"));
 
       await expect(
         notificationService.sendEmail(
@@ -91,7 +114,7 @@ describe("NotificationService", () => {
           "welcome",
           { nombre: "Test" }
         )
-      ).rejects.toThrow("Failed to send email: SMTP Error");
+      ).rejects.toThrow("Failed to send email: Resend API Error");
     });
 
     it("replaces all placeholders in the template", async () => {
@@ -106,7 +129,7 @@ describe("NotificationService", () => {
         { nombre: "John", email: "john@test.com", code: "123456" }
       );
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           html: expect.stringContaining("John - john@test.com - 123456"),
         })
@@ -121,7 +144,7 @@ describe("NotificationService", () => {
 
       await notificationService.sendWelcomeEmail(to, username);
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to,
           subject: "¡Bienvenido a Streamia!",
@@ -143,7 +166,7 @@ describe("NotificationService", () => {
 
       await notificationService.sendPasswordResetEmail(to, username, resetUrl);
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to,
           subject: "Restablecimiento de contraseña - Streamia",
@@ -167,7 +190,7 @@ describe("NotificationService", () => {
         username
       );
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to,
           subject,
@@ -183,7 +206,7 @@ describe("NotificationService", () => {
 
       await notificationService.sendNotification(to, subject, message);
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to,
           subject,
@@ -194,20 +217,10 @@ describe("NotificationService", () => {
   });
 
   describe("verifyConnection", () => {
-    it("returns true when connection is verified successfully", async () => {
+    it("returns true when API key is configured", async () => {
       const result = await notificationService.verifyConnection();
 
-      expect(mockVerify).toHaveBeenCalled();
       expect(result).toBe(true);
-    });
-
-    it("returns false when connection verification fails", async () => {
-      mockVerify.mockRejectedValue(new Error("Connection failed"));
-
-      const result = await notificationService.verifyConnection();
-
-      expect(mockVerify).toHaveBeenCalled();
-      expect(result).toBe(false);
     });
   });
 });

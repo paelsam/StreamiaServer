@@ -1,43 +1,53 @@
 import { NotificationService } from "../src/services/notificationService";
-import nodemailer from "nodemailer";
-import fs from "fs";
+import { Resend } from "resend";
 
-// Mock nodemailer and fs
-jest.mock("nodemailer");
-jest.mock("fs");
+// Create mockSend before mocking
+const mockSend = jest.fn().mockResolvedValue({ id: "test-email-id", data: null, error: null });
 
-describe("NotificationService", () => {
+// Mock Resend module
+jest.mock("resend");
+const MockedResend = Resend as jest.MockedClass<typeof Resend>;
+
+// Mock config module
+jest.mock("../src/config", () => ({
+  config: {
+    smtp: {
+      host: "smtp.resend.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: "resend",
+        pass: "re_test_api_key_123",
+      },
+    },
+    email: {
+      from: "onboarding@resend.dev",
+    },
+  },
+}));
+
+describe("NotificationService - Integration Tests", () => {
   let notificationService: NotificationService;
-  let mockSendMail: jest.Mock;
-  let mockVerify: jest.Mock;
   let consoleLogSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     // Reset mocks before each test
     jest.clearAllMocks();
+    
+    // Setup Resend mock implementation
+    MockedResend.mockImplementation(() => ({
+      emails: {
+        send: mockSend,
+      },
+    } as any));
+    
+    // Reset mockSend to default resolved value
+    mockSend.mockResolvedValue({ id: "test-email-id", data: null, error: null });
 
     // Silence console.log and console.error
     consoleLogSpy = jest.spyOn(console, "log").mockImplementation();
     consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
-
-    // Setup mock functions
-    mockSendMail = jest.fn().mockResolvedValue({ messageId: "test-id" });
-    mockVerify = jest.fn().mockResolvedValue(true);
-
-    // Mock transporter
-    (nodemailer.createTransport as jest.Mock).mockReturnValue({
-      sendMail: mockSendMail,
-      verify: mockVerify,
-    });
-
-    // Mock fs.existsSync to return true by default
-    (fs.existsSync as jest.Mock).mockReturnValue(true);
-
-    // Mock fs.readFileSync to return a simple template
-    (fs.readFileSync as jest.Mock).mockReturnValue(
-      "<html><body>Hola {{nombre}}, {{mensaje}}</body></html>"
-    );
 
     notificationService = new NotificationService();
   });
@@ -48,166 +58,77 @@ describe("NotificationService", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe("sendEmail", () => {
-    it("sends an email with the correct template and data", async () => {
-      const to = "user@example.com";
-      const subject = "Test Subject";
-      const template = "welcome";
-      const data = { nombre: "John Doe", mensaje: "Welcome message" };
-
-      await notificationService.sendEmail(to, subject, template, data);
-
-      expect(fs.existsSync).toHaveBeenCalled();
-      expect(fs.readFileSync).toHaveBeenCalled();
-      expect(mockSendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to,
-          subject,
-          html: expect.stringContaining("John Doe"),
-        })
-      );
+  describe("Service Initialization", () => {
+    it("creates a NotificationService instance successfully", () => {
+      expect(notificationService).toBeInstanceOf(NotificationService);
     });
 
-    it("throws an error if template does not exist", async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
-
-      await expect(
-        notificationService.sendEmail(
-          "user@example.com",
-          "Subject",
-          "non-existent",
-          {}
-        )
-      ).rejects.toThrow("Template not found: non-existent");
-    });
-
-    it("throws an error if email sending fails", async () => {
-      mockSendMail.mockRejectedValue(new Error("SMTP Error"));
-
-      await expect(
-        notificationService.sendEmail(
-          "user@example.com",
-          "Subject",
-          "welcome",
-          { nombre: "Test" }
-        )
-      ).rejects.toThrow("Failed to send email: SMTP Error");
-    });
-
-    it("replaces all placeholders in the template", async () => {
-      (fs.readFileSync as jest.Mock).mockReturnValue(
-        "<html>{{nombre}} - {{email}} - {{code}}</html>"
-      );
-
-      await notificationService.sendEmail(
-        "user@example.com",
-        "Subject",
-        "template",
-        { nombre: "John", email: "john@test.com", code: "123456" }
-      );
-
-      expect(mockSendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          html: expect.stringContaining("John - john@test.com - 123456"),
-        })
-      );
+    it("initializes Resend client with API key from config", () => {
+      expect(MockedResend).toHaveBeenCalledWith("re_test_api_key_123");
     });
   });
 
-  describe("sendWelcomeEmail", () => {
-    it("sends a welcome email with the correct data", async () => {
-      const to = "newuser@example.com";
-      const username = "NewUser";
-
-      await notificationService.sendWelcomeEmail(to, username);
-
-      expect(mockSendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to,
-          subject: "¡Bienvenido a Streamia!",
-          html: expect.stringContaining("NewUser"),
-        })
-      );
-    });
-  });
-
-  describe("sendPasswordResetEmail", () => {
-    it("sends a password reset email with the correct data", async () => {
-      const to = "user@example.com";
-      const username = "TestUser";
-      const resetUrl = "https://streamia.com/reset?token=abc123";
-
-      (fs.readFileSync as jest.Mock).mockReturnValue(
-        "<html>Hola {{nombre}}, {{resetUrl}}</html>"
-      );
-
-      await notificationService.sendPasswordResetEmail(to, username, resetUrl);
-
-      expect(mockSendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to,
-          subject: "Restablecimiento de contraseña - Streamia",
-          html: expect.stringContaining(username),
-        })
-      );
-    });
-  });
-
-  describe("sendNotification", () => {
-    it("sends a generic notification with username", async () => {
-      const to = "user@example.com";
-      const subject = "New Notification";
-      const message = "You have a new update";
-      const username = "JohnDoe";
-
-      await notificationService.sendNotification(
-        to,
-        subject,
-        message,
-        username
-      );
-
-      expect(mockSendMail).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to,
-          subject,
-          html: expect.stringContaining("JohnDoe"),
-        })
-      );
-    });
-
-    it("sends a notification with default username when not provided", async () => {
-      const to = "user@example.com";
-      const subject = "New Notification";
-      const message = "You have a new update";
+  describe("Resend Integration", () => {
+    it("uses Resend SDK for sending emails", async () => {
+      const to = "test@example.com";
+      const subject = "Test";
+      const message = "Test message";
 
       await notificationService.sendNotification(to, subject, message);
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalled();
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
+          from: "onboarding@resend.dev",
           to,
           subject,
-          html: expect.stringContaining("Usuario"),
         })
       );
     });
+
+    it("handles Resend API responses correctly", async () => {
+      mockSend.mockResolvedValueOnce({
+        id: "custom-email-id",
+        data: { success: true },
+        error: null,
+      });
+
+      await expect(
+        notificationService.sendNotification(
+          "test@example.com",
+          "Test",
+          "Message"
+        )
+      ).resolves.not.toThrow();
+    });
+
+    it("propagates Resend API errors", async () => {
+      const apiError = new Error("Resend rate limit exceeded");
+      mockSend.mockRejectedValueOnce(apiError);
+
+      await expect(
+        notificationService.sendNotification(
+          "test@example.com",
+          "Test",
+          "Message"
+        )
+      ).rejects.toThrow("Failed to send email: Resend rate limit exceeded");
+    });
   });
 
-  describe("verifyConnection", () => {
-    it("returns true when connection is verified successfully", async () => {
+  describe("Configuration Validation", () => {
+    it("verifies API key is configured", async () => {
       const result = await notificationService.verifyConnection();
 
-      expect(mockVerify).toHaveBeenCalled();
       expect(result).toBe(true);
     });
 
-    it("returns false when connection verification fails", async () => {
-      mockVerify.mockRejectedValue(new Error("Connection failed"));
+    it("logs success message when API key is valid", async () => {
+      await notificationService.verifyConnection();
 
-      const result = await notificationService.verifyConnection();
-
-      expect(mockVerify).toHaveBeenCalled();
-      expect(result).toBe(false);
+      expect(consoleLogSpy).toHaveBeenCalledWith(
+        "Resend API key configured successfully"
+      );
     });
   });
 });

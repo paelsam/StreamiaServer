@@ -1,4 +1,4 @@
-import nodemailer, { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config';
@@ -8,20 +8,12 @@ interface EmailData {
 }
 
 export class NotificationService {
-  private transporter: Transporter;
+  private resend: Resend;
   private templatesPath: string;
 
   constructor() {
     this.templatesPath = path.join(__dirname, '../templates');
-    this.transporter = nodemailer.createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: config.smtp.secure,
-      auth: {
-        user: config.smtp.auth.user,
-        pass: config.smtp.auth.pass,
-      },
-    });
+    this.resend = new Resend(config.smtp.auth.pass);
   }
 
   /**
@@ -53,15 +45,15 @@ export class NotificationService {
         htmlContent = htmlContent.replace(placeholder, data[key] || '');
       });
 
-      // Send email
-      await this.transporter.sendMail({
+      // Send email using Resend
+      const result = await this.resend.emails.send({
         from: config.email.from,
         to,
         subject,
         html: htmlContent,
       });
 
-      console.log(`Email sent successfully to ${to}`);
+      console.log(`Email sent successfully to ${to}`, result);
     } catch (error) {
       console.error('Error sending email:', error);
       throw new Error(`Failed to send email: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -131,15 +123,18 @@ export class NotificationService {
   }
 
   /**
-   * Verify transporter connection
+   * Verify Resend API key
    */
   async verifyConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify();
-      console.log('SMTP connection verified successfully');
+      // Resend doesn't have a verify method, so we check if the API key is set
+      if (!config.smtp.auth.pass || config.smtp.auth.pass === '') {
+        throw new Error('Resend API key not configured');
+      }
+      console.log('Resend API key configured successfully');
       return true;
     } catch (error) {
-      console.error('SMTP connection verification failed:', error);
+      console.error('Resend API key verification failed:', error);
       return false;
     }
   }
