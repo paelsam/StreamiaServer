@@ -1,7 +1,7 @@
 module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
-  testMatch: ["**/test/**/*.test.ts", "**/tests/**/*.test.ts"],
+  testMatch: ["**/tests/**/*.test.ts"],
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,
