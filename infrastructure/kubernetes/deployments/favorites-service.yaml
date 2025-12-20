@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: favorites-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: favorites-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: streamia
+      service: favorites-service
+  template:
+    metadata:
+      labels:
+        app: streamia
+        service: favorites-service
+    spec:
+      containers:
+        - name: favorites-service
+          image: andresmg42/streamia-favorites-service:latest
+          ports:
+            - containerPort: 3003
+          # Load all variables from ConfigMap and Secrets
+          envFrom:
+            - configMapRef:
+                name: streamia-config
+            - secretRef:
+                name: streamia-secrets
+          env:
+            # Override and set service-specific variables
+            - name: PORT
+              value: "3003"
+            # Explicitly map MONGODB_URI_FAVORITES from configmap
+            - name: MONGODB_URI_FAVORITES
+              valueFrom:
+                configMapKeyRef:
+                  name: streamia-config
+                  key: MONGODB_URI_FAVORITES
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3003
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: favorites-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: favorites-service
+spec:
+  selector:
+    app: streamia
+    service: favorites-service
+  ports:
+    - port: 3003
+      targetPort: 3003
+      protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: favorites-service-hpa
+  namespace: streamia
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: favorites-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

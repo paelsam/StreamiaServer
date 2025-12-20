@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import multer, { FileFilterCallback, File } from 'multer';
+import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import { apiResponse, errorResponse, asyncHandler } from '@streamia/shared';
 import { MovieService } from '../services';
@@ -8,20 +8,15 @@ import { MovieService } from '../services';
 type DestinationCallback = (error: Error | null, destination: string) => void;
 type FileNameCallback = (error: Error | null, filename: string) => void;
 
-// Extended Request type for multer
-interface MulterRequest extends Request {
-  file?: File;
-}
-
 /**
  * Multer configuration for temporary file uploads
  */
 const storage = multer.diskStorage({
-  destination: (req: Request, file: File, cb: DestinationCallback) => {
+  destination: (req: Request, file: Express.Multer.File, cb: DestinationCallback) => {
     // Ensure uploads directory exists or handle via docker volume
     cb(null, 'uploads/');
   },
-  filename: (req: Request, file: File, cb: FileNameCallback) => {
+  filename: (req: Request, file: Express.Multer.File, cb: FileNameCallback) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
@@ -32,7 +27,7 @@ export const uploadMiddleware = multer({
   limits: {
     fileSize: 100 * 1024 * 1024 // 100MB limit for videos
   },
-  fileFilter: (req: Request, file: File, cb: FileFilterCallback) => {
+  fileFilter: (req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     if (file.fieldname === 'video') {
       const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
       const ext = path.extname(file.originalname).toLowerCase();
@@ -64,7 +59,7 @@ export class MovieController {
   /**
    * POST /api/movies/upload
    */
-  uploadMovie = asyncHandler(async (req: MulterRequest, res: Response) => {
+  uploadMovie = asyncHandler(async (req: Request, res: Response) => {
     try {
       if (!req.file) {
         return errorResponse(res, 400, 'No video file provided');
@@ -82,7 +77,7 @@ export class MovieController {
   /**
    * POST /api/movies/:id/subtitles
    */
-  uploadSubtitles = asyncHandler(async (req: MulterRequest, res: Response) => {
+  uploadSubtitles = asyncHandler(async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { language, label } = req.body;

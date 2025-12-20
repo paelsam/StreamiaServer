@@ -9,7 +9,7 @@
     "shared"
   ],
   "scripts": {
-    "dev": "docker-compose -f infrastructure/docker-compose.yml up -d && concurrently \"npm run dev:user\" \"npm run dev:gateway\"",
+    "dev": "docker-compose -f infrastructure/docker-compose.yml up -d mongodb redis rabbitmq && concurrently \"npm run dev:user\" \"npm run dev:gateway\"",
     "dev:user": "npm run dev --workspace=services/user-service",
     "dev:movie": "npm run dev --workspace=services/movie-service",
     "dev:favorites": "npm run dev --workspace=services/favorites-service",
@@ -18,8 +18,10 @@
     "dev:notification": "npm run dev --workspace=services/notification-service",
     "dev:gateway": "npm run dev --workspace=gateway/express-gateway",
     "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
     "lint": "npm run lint --workspaces",
+    "sonar": "sonar-scanner",
     "docker:up": "docker-compose -f infrastructure/docker-compose.yml up -d",
     "docker:down": "docker-compose -f infrastructure/docker-compose.yml down",
     "docker:logs": "docker-compose -f infrastructure/docker-compose.yml logs -f",
@@ -35,5 +37,9 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "express": "^4.22.1",
+    "mongoose": "^9.0.2"
   }
 }
