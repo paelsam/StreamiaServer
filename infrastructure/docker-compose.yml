@@ -161,8 +161,30 @@ services:
       - streamia-network
 
   # Favorites Service (placeholder)
-  # favorites-service:
-  #   ...
+  favorites-service:
+    build:
+      context: ..
+      dockerfile: services/favorites-service/Dockerfile
+    container_name: streamia-favorites-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      MONGODB_URI_FAVORITES: ${MONGODB_URI_FAVORITES}
+      RABBITMQ_URL: amqp://streamia:streamia@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      USER_SERVICE_URL: http://user-service:3001
+      MOVIE_SERVICE_URL: http://movie-service:3002
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - streamia-network
 
   rating-service:
     build:

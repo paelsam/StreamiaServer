@@ -20,6 +20,7 @@ USER_DOCKERFILE="$REPO_ROOT/services/user-service/Dockerfile"
 RATING_DOCKERFILE="$REPO_ROOT/services/rating-service/Dockerfile"
 NOTIFICATION_DOCKERFILE="$REPO_ROOT/services/notification-service/Dockerfile"
 COMMENT_DIR="$REPO_ROOT/../services/comment-service"
+FAVORITES_DOCKERFILE="$REPO_ROOT/services/favorites-service/Dockerfile"
 
 GATEWAY_REPO="$DOCKER_USERNAME/gateway"
 MOVIE_REPO="$DOCKER_USERNAME/movie-service"
@@ -27,6 +28,7 @@ USER_REPO="$DOCKER_USERNAME/user-service"
 RATING_REPO="$DOCKER_USERNAME/streamia-rating-service"
 NOTIFICATION_REPO="$DOCKER_USERNAME/streamia-notification-service"
 COMMENT_REPO="$DOCKER_USERNAME/comment-service"
+FAVORITES_REPO="$DOCKER_USERNAME/streamia-favorites-service"
 
 function ensure_docker() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -65,6 +67,7 @@ build_and_push "$USER_DOCKERFILE" "$USER_REPO"
 build_and_push "$RATING_DOCKERFILE" "$RATING_REPO"
 build_and_push "$NOTIFICATION_DOCKERFILE" "$NOTIFICATION_REPO"
 build_and_push "$COMMENT_DIR" "$COMMENT_REPO"
+build_and_push "$FAVORITES_DOCKERFILE" "$FAVORITES_REPO"
 
 echo "\nAll images built and pushed as $DOCKER_USERNAME/*:$TAG"
 
