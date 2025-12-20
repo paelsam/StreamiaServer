@@ -234,19 +234,51 @@ export class MovieService {
   }
 
   /**
-   * Delete Movie
+   * Delete Movie (Saga Pattern)
+   * Deletes movie from Cloudinary and database, then triggers saga for cleanup
    */
   async deleteMovie(id: string): Promise<void> {
-    const movie = await Movie.findByIdAndDelete(id);
+    const movie = await Movie.findById(id);
 
     if (!movie) {
       throw new Error('Movie not found');
     }
 
-    await this.eventBus.publish(EVENTS.MOVIE_DELETED, {
-      movieId: movie._id,
-      cloudinaryPublicId: movie.cloudinaryPublicId
-    });
+    try {
+      // Step 1: Delete from Cloudinary (external service)
+      if (movie.cloudinaryPublicId) {
+        const { deleteFromCloudinary } = await import('../config/cloudinary');
+        await deleteFromCloudinary(movie.cloudinaryPublicId, 'video');
+        console.log(`✅ Deleted video from Cloudinary: ${movie.cloudinaryPublicId}`);
+      }
+
+      // Step 2: Delete subtitles from Cloudinary
+      if (movie.subtitles && movie.subtitles.length > 0) {
+        const { deleteFromCloudinary } = await import('../config/cloudinary');
+        for (const subtitle of movie.subtitles) {
+          if (subtitle.cloudinaryPublicId) {
+            await deleteFromCloudinary(subtitle.cloudinaryPublicId, 'raw');
+            console.log(`✅ Deleted subtitle from Cloudinary: ${subtitle.cloudinaryPublicId}`);
+          }
+        }
+      }
+
+      // Step 3: Delete from database
+      await Movie.findByIdAndDelete(id);
+      console.log(`✅ Deleted movie from database: ${id}`);
+
+      // Step 4: Publish SAGA event to trigger cleanup in other services
+      await this.eventBus.publish(EVENTS.MOVIE_DELETED, {
+        movieId: movie._id.toString(),
+        title: movie.title || 'Unknown'
+      });
+      console.log(`📤 Published MOVIE_DELETED event for saga orchestration`);
+
+    } catch (error: any) {
+      console.error('❌ Error in deleteMovie saga:', error);
+      // TODO: Implement compensation logic if needed
+      throw new Error(`Failed to delete movie: ${error.message}`);
+    }
   }
 
   /**
