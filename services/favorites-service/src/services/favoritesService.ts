@@ -1,5 +1,5 @@
 import Favorite from "../models/Favorites";
-import { EventBus } from '@streamia/shared';
+import { EventBus, EVENTS, QUEUES } from '@streamia/shared';
 import { Types } from "mongoose";
 import axios from "axios";
 import { config } from "../config";
@@ -12,36 +12,65 @@ export class FavoritesService {
     this.setupEventHandlers();
   }
 
-  private setupEventHandlers() {
-    // Suscribirse a eventos del sistema usando any para evitar problemas de tipos
-    this.eventBus.subscribe('user.deleted' as any, async (event: any) => {
-      if (event.payload && event.payload.userId) {
-        await this.handleUserDeleted(event.payload.userId);
-      }
-    });
-
-    this.eventBus.subscribe('movie.deleted' as any, async (event: any) => {
-      if (event.payload && event.payload.movieId) {
-        await this.handleMovieDeleted(event.payload.movieId);
-      }
-    });
-  }
-
-  private async handleUserDeleted(userId: string) {
+  private async setupEventHandlers() {
     try {
-      const count = await Favorite.deleteByUser(userId);
-      console.log(`🗑️ Deleted ${count} favorites for user ${userId}`);
+      // Subscribe to USER_DELETED event for Saga pattern
+      await this.eventBus.subscribe(
+        EVENTS.USER_DELETED,
+        this.handleUserDeleted.bind(this),
+        QUEUES.FAVORITES_USER_QUEUE
+      );
+
+      // Subscribe to MOVIE_DELETED event for Saga pattern
+      await this.eventBus.subscribe(
+        EVENTS.MOVIE_DELETED,
+        this.handleMovieDeleted.bind(this),
+        QUEUES.FAVORITES_MOVIE_QUEUE
+      );
+
+      console.log('✅ [FavoritesService] Saga handlers initialized');
     } catch (error) {
-      console.error(`Error deleting favorites for user ${userId}:`, error);
+      console.error('❌ [FavoritesService] Failed to setup saga handlers:', error);
     }
   }
 
-  private async handleMovieDeleted(movieId: string) {
+  private async handleUserDeleted(event: any) {
     try {
-      const count = await Favorite.deleteByMovie(movieId);
-      console.log(`🗑️ Deleted ${count} favorites for movie ${movieId}`);
+      const { userId } = event.payload;
+      console.log(`🔄 [SAGA] Handling USER_DELETED for userId: ${userId}`);
+      
+      const count = await Favorite.deleteByUser(userId);
+      console.log(`✅ [SAGA] Deleted ${count} favorites for user ${userId}`);
+
+      // Publish confirmation event
+      if (count > 0) {
+        await this.eventBus.publish(EVENTS.FAVORITES_CLEARED_FOR_USER, {
+          userId,
+          count
+        });
+      }
     } catch (error) {
-      console.error(`Error deleting favorites for movie ${movieId}:`, error);
+      console.error(`❌ [SAGA] Error deleting favorites for user:`, error);
+    }
+  }
+
+  private async handleMovieDeleted(event: any) {
+    try {
+      const { movieId } = event.payload;
+      console.log(`🔄 [SAGA] Handling MOVIE_DELETED for movieId: ${movieId}`);
+      
+      const count = await Favorite.deleteByMovie(movieId);
+      console.log(`✅ [SAGA] Deleted ${count} favorites for movie ${movieId}`);
+
+      // Publish confirmation event
+      if (count > 0) {
+        await this.eventBus.publish(EVENTS.FAVORITES_CLEARED_FOR_MOVIE, {
+          movieId,
+          count
+        });
+      }
+    } catch (error) {
+      console.error(`❌ [SAGA] Error deleting favorites for movie:`, error);
     }
   }
 

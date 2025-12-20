@@ -132,4 +132,31 @@ export const uploadSubtitle = async (filePath: string, options = {}): Promise<Cl
   }
 };
 
+/**
+ * Deletes a resource from Cloudinary
+ * @async
+ * @function deleteFromCloudinary
+ * @param {string} publicId - The public ID of the resource to delete
+ * @param {string} [resourceType='video'] - Type of resource ('video', 'image', 'raw')
+ * @returns {Promise<void>}
+ * @throws {Error} If deletion fails
+ * @example
+ * await deleteFromCloudinary('streamia/movies/abc123', 'video');
+ */
+export const deleteFromCloudinary = async (publicId: string, resourceType: 'video' | 'image' | 'raw' = 'video'): Promise<void> => {
+  try {
+    console.log(`🗑️ CLOUDINARY_DEBUG - Deleting ${resourceType}:`, publicId);
+    
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType,
+      invalidate: true
+    });
+    
+    console.log('✅ CLOUDINARY_DEBUG - Resource deleted:', result);
+  } catch (error: any) {
+    console.error('❌ CLOUDINARY_DEBUG - Error deleting resource:', error);
+    throw new Error(`Failed to delete resource from Cloudinary: ${error.message}`);
+  }
+};
+
 export default cloudinary;
