@@ -1,7 +1,7 @@
 {
-  "name": "@streamia/user-service",
+  "name": "@streamia/comment-service",
   "version": "1.0.0",
-  "description": "User Service - Authentication and user management for Streamia",
+  "description": "Comment Service - Comments management for Streamia",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -14,32 +14,26 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@streamia/shared": "1.0.0",
+    "@streamia/shared": "file:../../shared",
     "amqplib": "^0.10.5",
-    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
-    "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.2",
     "morgan": "^1.10.0",
-    "uuid": "^11.0.3",
-    "zod": "^3.24.1"
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@types/amqplib": "^0.10.7",
-    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.10.2",
-    "@types/supertest": "^6.0.3",
-    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
     "@typescript-eslint/parser": "^8.18.1",
     "eslint": "^9.17.0",
