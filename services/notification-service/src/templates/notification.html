@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Notificación de Stremia</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			background-color: #f4f4f4;
+			margin: 0;
+			padding: 0;
+		}
+		.container {
+			max-width: 600px;
+			margin: 40px auto;
+			background: #fff;
+			border-radius: 8px;
+			box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+			padding: 32px 24px;
+		}
+		.header {
+			text-align: center;
+			margin-bottom: 24px;
+		}
+		.header h1 {
+			color: #2d8cff;
+			margin: 0;
+		}
+		.content {
+			color: #333;
+			font-size: 16px;
+			line-height: 1.6;
+		}
+		.footer {
+			margin-top: 32px;
+			text-align: center;
+			color: #888;
+			font-size: 13px;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<h1>Notificación de Stremia</h1>
+		</div>
+		<div class="content">
+			<p>Hola <strong>{{nombre}}</strong>,</p>
+			<p>{{mensaje}}</p>
+			<p>Saludos,<br>El equipo de Stremia</p>
+		</div>
+		<div class="footer">
+			© 2025 Stremia. Todos los derechos reservados.
+		</div>
+	</div>
+</body>
+</html>

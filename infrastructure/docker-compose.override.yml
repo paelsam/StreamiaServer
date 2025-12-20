@@ -33,3 +33,31 @@ services:
       - ../shared/src:/app/shared/src:ro
     environment:
       NODE_ENV: development
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    volumes:
+      - ../services/notification-service/src:/app/src:ro
+      - ../shared/src:/app/shared/src:ro
+    environment:
+      NODE_ENV: development
+
+  rating-service:
+    build:
+      context: ..
+      dockerfile: services/rating-service/Dockerfile
+    volumes:
+      - ../services/rating-service/src:/app/src:ro
+    environment:
+      NODE_ENV: development
+  
+  comment-service:
+    build:
+      context: ..
+      dockerfile: services/comment-service/Dockerfile
+    volumes:
+      - ../services/comment-service/src:/app/src:ro
+    environment:
+      NODE_ENV: development

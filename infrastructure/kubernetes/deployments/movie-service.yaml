@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movie-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: movie-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: streamia
+      service: movie-service
+  template:
+    metadata:
+      labels:
+        app: streamia
+        service: movie-service
+    spec:
+      containers:
+        - name: movie-service
+          image: andresmg42/streamia-movie-service:latest
+          ports:
+            - containerPort: 3002
+          # Load all variables from ConfigMap and Secrets
+          envFrom:
+            - configMapRef:
+                name: streamia-config
+            - secretRef:
+                name: streamia-secrets
+          env:
+            # Override and set service-specific variables
+            - name: PORT
+              value: "3002"
+            # Explicitly map MONGODB_URI_MOVIES from configmap
+            - name: MONGODB_URI_MOVIES
+              valueFrom:
+                configMapKeyRef:
+                  name: streamia-config
+                  key: MONGODB_URI_MOVIES
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3002
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: movie-service
+  namespace: streamia
+  labels:
+    app: streamia
+    service: movie-service
+spec:
+  selector:
+    app: streamia
+    service: movie-service
+  ports:
+    - port: 3002
+      targetPort: 3002
+      protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: movie-service-hpa
+  namespace: streamia
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: movie-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
