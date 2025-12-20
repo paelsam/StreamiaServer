@@ -1,24 +1,30 @@
 # ========== ETAPA ÚNICA (más simple) ==========
 FROM node:20-alpine
 
-WORKDIR /app/services/favorites-service
+WORKDIR /app
 
-# 1. Copiar archivos del servicio
+# 1. Copiar y construir shared package primero
+COPY shared/package*.json ./shared/
+COPY shared/tsconfig.json ./shared/
+COPY shared/src ./shared/src
+
+# Construir shared package
+WORKDIR /app/shared
+RUN npm install && npm run build
+
+# 2. Copiar archivos del servicio
+WORKDIR /app/services/favorites-service
 COPY services/favorites-service/package*.json ./
 COPY services/favorites-service/tsconfig.json ./
 COPY services/favorites-service/src ./src
 
-# 2. Copiar shared package (desde el contexto raíz)
-COPY shared/ ../shared/
-
 # 3. Configurar shared como dependencia local
-RUN npm pkg set dependencies.@streamia/shared="file:../../shared" \
-    && npm pkg set dependencies.@streamia/event-bus="file:../../shared/event-bus"
+RUN npm pkg set dependencies.@streamia/shared="file:../../shared"
 
 # 4. Instalar dependencias
 RUN npm install
 
-# 5. Construir
+# 5. Construir servicio
 RUN npm run build
 
 # 6. Variables de entorno

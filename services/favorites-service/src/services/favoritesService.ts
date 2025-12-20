@@ -47,12 +47,21 @@ export class FavoritesService {
 
   private async validateMovie(movieId: string): Promise<void> {
     try {
-      const response = await axios.get(`${config.movieServiceUrl}/api/movies/${movieId}`);
+      const response = await axios.get(`${config.movieServiceUrl}/api/v1/movies/${movieId}`, { timeout: 3000 });
       if (!response.data) {
-        throw new Error('Movie not found');
+        const err: any = new Error('Movie not found');
+        err.code = 'NOT_FOUND';
+        throw err;
       }
-    } catch (error) {
-      throw new Error('Movie validation failed');
+    } catch (error: any) {
+      if (error && error.response && error.response.status === 404) {
+        const err: any = new Error('Movie not found');
+        err.code = 'NOT_FOUND';
+        throw err;
+      }
+      const err: any = new Error('Movie validation failed');
+      err.code = 'NOT_FOUND';
+      throw err;
     }
   }
 
@@ -62,7 +71,9 @@ export class FavoritesService {
 
       const exists = await Favorite.checkExists(userId, movieId);
       if (exists) {
-        throw new Error('FAVORITE_ALREADY_EXISTS');
+        const err: any = new Error('This movie is already in your favorites');
+        err.code = 'DUPLICATE_FAVORITE';
+        throw err;
       }
 
       const favorite = await Favorite.create({

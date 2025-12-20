@@ -9,7 +9,7 @@ export const config = {
   serviceName: 'favorites-service' as const,
   
   // Database
-  mongodbUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/streamia_favorites',
+  mongodbUri: process.env.MONGODB_URI_FAVORITES || process.env.MONGODB_URI || 'mongodb://localhost:27017/streamia_favorites',
   
   // RabbitMQ
   rabbitmqUrl: process.env.RABBITMQ_URL || 'amqp://localhost:5672',
