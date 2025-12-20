@@ -55,7 +55,7 @@ stringData:" > "$output_file"
         
         # Add to secrets (sensitive data)
         case "$key" in
-            JWT_SECRET|JWT_REFRESH_SECRET|MONGODB_*|RABBITMQ_PASSWORD|CLOUDINARY_API_*|SMTP_PASSWORD|EMAIL_PASS|SMTP_PASS)
+            JWT_SECRET|JWT_REFRESH_SECRET|MONGODB_*|RABBITMQ_PASSWORD|CLOUDINARY_API_*|SMTP_PASSWORD|EMAIL_PASS|SMTP_PASS|MONGODB_RATINGS_PASSWORD)
                 echo "  $key: \"$value\"" >> "$output_file"
                 ;;
         esac

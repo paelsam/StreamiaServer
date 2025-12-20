@@ -65,7 +65,7 @@ Get-Content -Path $EnvFile | ForEach-Object {
 
     # Decide whether this key is secret or config
     switch -Regex ($key) {
-        '^(JWT_SECRET|JWT_REFRESH_SECRET|RABBITMQ_PASSWORD|RABBITMQ_USER|CLOUDINARY_API_.*|SMTP_PASSWORD|EMAIL_PASS|SMTP_PASS)$' {
+        '^(JWT_SECRET|JWT_REFRESH_SECRET|RABBITMQ_PASSWORD|RABBITMQ_USER|CLOUDINARY_API_.*|SMTP_PASSWORD|EMAIL_PASS|SMTP_PASS|MONGODB_RATINGS_PASSWORD)$' {
             $secretLines += ('  {0}: ''{1}''' -f $key, $esc)
             break
         }

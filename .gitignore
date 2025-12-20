@@ -11,6 +11,4 @@ coverage/
 
 # Kubernetes generated files
 infrastructure/kubernetes/generated/
-
-# Keep infrastructure/.env (centralized configuration)
-!infrastructure/.env
+*/env
